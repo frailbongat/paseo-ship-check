@@ -1,0 +1,6 @@
+{
+  "id": "paseo-ship-check",
+  "requirements": {
+    "paseo": ">=0.8.0"
+  }
+}
