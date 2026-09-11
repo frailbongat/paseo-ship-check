@@ -26,6 +26,14 @@
  * size per line, so the corrections below, the lifted headline and the trimmed
  * top padding, stay true at any size.
  *
+ * Within that scale the card sets everything on three sizes and no more:
+ * `HEADING` for the verdict, `BODY` for the lines a reader actually reads, and
+ * `META` for the ones they only glance at. The verdict is the reason the card
+ * exists and has to land from a laptop's reading distance, so it is far enough
+ * above the rest to be found without looking for it. Body and meta used to sit
+ * a point apart, which is a difference the eye reads as an accident rather than
+ * as rank; two points and a colour apart is a hierarchy.
+ *
  * The button draws no progress of its own. The command it sends starts an
  * ordinary turn, and Paseo already reports a running turn in the stream footer,
  * so a second spinner on the card would only be the same news twice. The button
@@ -63,7 +71,7 @@ function statusColor(row: ShipRow, theme: PluginTheme): string {
  * and the head row is then a single line of text. Reading that off `ready`
  * anywhere else in the layout was what tipped the blocked card's headline out
  * of place: the optical corrections a 34pt button needs were being applied to a
- * row that had nothing in it but a 20pt line.
+ * row that had nothing in it but a 26pt line.
  */
 function hasAction(row: ShipRow): boolean {
   return row.ready;
@@ -71,6 +79,18 @@ function hasAction(row: ShipRow): boolean {
 
 /** A disabled button never fires this, and `ActionButton` requires a handler. */
 function noop(): void {}
+
+/**
+ * The card's three sizes, before the reader's scale is applied to them.
+ *
+ * Compact is the timeline on a phone, where the heading gives back two points
+ * rather than pushing the branch line into an ellipsis. Body and meta hold:
+ * they are already the smallest sizes worth setting, and shrinking them to buy
+ * width would cost the thing the width is for.
+ */
+const HEADING = { size: 20, leading: 26, compactSize: 18, compactLeading: 23 } as const;
+const BODY = { size: 15, leading: 21 } as const;
+const META = { size: 13, leading: 18 } as const;
 
 function checkTime(checkedAt: string): string {
   return new Date(checkedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
@@ -97,15 +117,17 @@ function CheckLine({
 
   return (
     <View style={{ flexDirection: "row", gap: type.px(8), alignItems: "flex-start" }}>
-      <View style={{ paddingTop: type.px(2) }}>
-        <Icon name={failed ? "X" : "AlertTriangle"} size={type.px(13)} color={color} />
+      {/* The icon centres on the label's first line, so it follows the leading
+          that line is set on rather than sitting at a fixed drop. */}
+      <View style={{ paddingTop: type.px(3) }}>
+        <Icon name={failed ? "X" : "AlertTriangle"} size={type.px(14)} color={color} />
       </View>
       <View style={{ flex: 1, gap: type.px(2) }}>
         <Text
           style={{
             color: muted ? theme.colors.foregroundMuted : theme.colors.foreground,
-            fontSize: type.px(13),
-            lineHeight: type.px(18),
+            fontSize: type.px(BODY.size),
+            lineHeight: type.px(BODY.leading),
             fontFamily: type.fontFamily,
           }}
         >
@@ -115,8 +137,8 @@ function CheckLine({
           <Text
             style={{
               color: theme.colors.foregroundMuted,
-              fontSize: type.px(12),
-              lineHeight: type.px(16),
+              fontSize: type.px(META.size),
+              lineHeight: type.px(META.leading),
               fontFamily: type.fontFamily,
             }}
           >
@@ -252,9 +274,11 @@ export function ShipCard({ row, agentId, theme, compact, footnote = null }: Ship
    */
   const buttonInHead = action && !compact;
   const buttonBelowMeta = action && compact;
-  // The head row is 34pt tall around a 20pt line whenever it holds a button, so
-  // part of the space under the headline is already paid for there.
-  const metaGap = type.px(buttonInHead ? 6 : 10);
+  // The head row is 34pt tall around a 26pt line whenever it holds a button, so
+  // part of the space under the headline is already paid for there. Less of it
+  // than there used to be: the taller heading eats into the same 34pt row, so
+  // the gap under it takes back what the row stopped giving.
+  const metaGap = type.px(buttonInHead ? 8 : 11);
 
   const styles = useMemo(
     () => ({
@@ -288,36 +312,37 @@ export function ShipCard({ row, agentId, theme, compact, footnote = null }: Ship
         gap: type.px(8),
         flexShrink: 1,
         // Centring two texts of different sizes lines up their boxes, not their
-        // letters, and the 16pt headline reads low beside the 13pt button label.
-        // Matching the baselines takes about a pixel; this lifts further than
-        // that, sitting the headline high in the row on purpose, which is what
-        // reads as level against a filled button. Whole pixels only, so a 1x
-        // browser client does not render the row on a half pixel. No button, no
-        // lift: there is nothing to be level with.
+        // letters, and the 20pt headline reads low beside the 13pt button label.
+        // The gap between their baselines is about three pixels now the heading
+        // is the larger of the two by more; this lifts further than that,
+        // sitting the headline high in the row on purpose, which is what reads
+        // as level against a filled button. Whole pixels only, so a 1x browser
+        // client does not render the row on a half pixel. No button, no lift:
+        // there is nothing to be level with.
         ...(compact ? {} : { flexGrow: 1, flexBasis: 0 }),
-        ...(buttonInHead ? { transform: [{ translateY: -type.px(4) }] as const } : {}),
+        ...(buttonInHead ? { transform: [{ translateY: -type.px(5) }] as const } : {}),
       },
       // An explicit line height is what makes the centring honest. Left to its
       // default, a `Text` box carries leading the eye does not see, and the
       // headline centres that invisible box against the button instead of its
       // own letters.
       headline: {
-        fontSize: type.px(compact ? 15 : 16),
-        lineHeight: type.px(compact ? 19 : 20),
+        fontSize: type.px(compact ? HEADING.compactSize : HEADING.size),
+        lineHeight: type.px(compact ? HEADING.compactLeading : HEADING.leading),
         fontWeight: "600" as const,
         fontFamily: type.fontFamily,
         flexShrink: 1,
       },
       branch: {
         color: stale ? theme.colors.foregroundMuted : theme.colors.foreground,
-        fontSize: type.px(13),
-        lineHeight: type.px(18),
+        fontSize: type.px(BODY.size),
+        lineHeight: type.px(BODY.leading),
         fontFamily: type.fontFamily,
       },
       detail: {
         color: theme.colors.foregroundMuted,
-        fontSize: type.px(12),
-        lineHeight: type.px(16),
+        fontSize: type.px(META.size),
+        lineHeight: type.px(META.leading),
         fontFamily: type.fontFamily,
       },
       rule: {
@@ -333,23 +358,27 @@ export function ShipCard({ row, agentId, theme, compact, footnote = null }: Ship
         justifyContent: "space-between" as const,
         gap: type.px(10),
       },
+      // The footer is meta, and it is set at meta's size rather than under it.
+      // A fourth size two points below the smallest text on the card was never
+      // read as a rank, only as small print, and it is the line that says how
+      // many checks passed.
       footnote: {
         color: theme.colors.foregroundMuted,
-        fontSize: type.px(11),
+        fontSize: type.px(META.size),
         fontFamily: type.fontFamily,
       },
       // Times in a stream of cards sit in the same corner card after card, and
       // proportional digits make that column jitter as the minutes change.
       time: {
         color: theme.colors.foregroundMuted,
-        fontSize: type.px(11),
+        fontSize: type.px(META.size),
         fontFamily: type.fontFamily,
         fontVariant: ["tabular-nums" as const],
       },
       failure: {
         color: theme.colors.statusDanger,
-        fontSize: type.px(12),
-        lineHeight: type.px(16),
+        fontSize: type.px(META.size),
+        lineHeight: type.px(META.leading),
         fontFamily: type.fontFamily,
         marginTop: type.px(12),
       },
@@ -378,7 +407,7 @@ export function ShipCard({ row, agentId, theme, compact, footnote = null }: Ship
     <View style={styles.card}>
       <View style={styles.head}>
         <View style={styles.title}>
-          <Icon name="Ship" size={type.px(16)} color={headline} />
+          <Icon name="Ship" size={type.px(compact ? 17 : 18)} color={headline} />
           <Text style={[styles.headline, { color: headline }]} numberOfLines={2}>
             {row.headline}
           </Text>
@@ -415,7 +444,7 @@ export function ShipCard({ row, agentId, theme, compact, footnote = null }: Ship
         <View
           style={{ flexDirection: "row", alignItems: "center", gap: type.px(6), flexShrink: 1 }}
         >
-          <Icon name="Check" size={type.px(12)} color={theme.colors.foregroundMuted} />
+          <Icon name="Check" size={type.px(META.size)} color={theme.colors.foregroundMuted} />
           <Text style={styles.footnote} numberOfLines={1}>
             {row.passed} check{row.passed === 1 ? "" : "s"} passed
             {footnote ? ` · ${footnote}` : ""}

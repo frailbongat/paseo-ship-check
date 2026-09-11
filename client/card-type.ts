@@ -3,7 +3,7 @@
  * family and a scale.
  *
  * Every number in `ship-card.tsx` is tuned against the others. The head row is
- * as tall as the button in it, the headline is lifted off centre by four
+ * as tall as the button in it, the headline is lifted off centre by five
  * pixels to read level against that button's label, and the card's top padding
  * is trimmed to match. Exposing a font size per line would break all of that
  * the first time someone raised one line and not its neighbours.
