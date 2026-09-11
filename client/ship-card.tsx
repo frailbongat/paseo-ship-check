@@ -354,7 +354,11 @@ export function ShipCard({ row, agentId, theme, compact, footnote = null }: Ship
       footer: {
         marginTop: type.px(12),
         flexDirection: "row" as const,
-        alignItems: "center" as const,
+        // The footnote is allowed a second line, so the row hangs its two ends
+        // from the same top edge rather than centring a two-line block against
+        // a one-line time. Identical to centring while the footnote fits on one
+        // line, which is most cards.
+        alignItems: "flex-start" as const,
         justifyContent: "space-between" as const,
         gap: type.px(10),
       },
@@ -362,9 +366,17 @@ export function ShipCard({ row, agentId, theme, compact, footnote = null }: Ship
       // A fourth size two points below the smallest text on the card was never
       // read as a rank, only as small print, and it is the line that says how
       // many checks passed.
+      //
+      // Meta's two extra points cost this line about sixty pixels, which a card
+      // in a narrow panel does not have: every clause after the first was
+      // landing in an ellipsis. The clauses are the cache note and the stale
+      // note, which are the two things on the card a reader cannot work out
+      // from anywhere else, so the line wraps rather than drops them. An
+      // explicit leading is what keeps the wrapped pair evenly spaced.
       footnote: {
         color: theme.colors.foregroundMuted,
         fontSize: type.px(META.size),
+        lineHeight: type.px(META.leading),
         fontFamily: type.fontFamily,
       },
       // Times in a stream of cards sit in the same corner card after card, and
@@ -372,6 +384,7 @@ export function ShipCard({ row, agentId, theme, compact, footnote = null }: Ship
       time: {
         color: theme.colors.foregroundMuted,
         fontSize: type.px(META.size),
+        lineHeight: type.px(META.leading),
         fontFamily: type.fontFamily,
         fontVariant: ["tabular-nums" as const],
       },
@@ -408,9 +421,15 @@ export function ShipCard({ row, agentId, theme, compact, footnote = null }: Ship
       <View style={styles.head}>
         <View style={styles.title}>
           <Icon name="Ship" size={type.px(compact ? 17 : 18)} color={headline} />
-          <Text style={[styles.headline, { color: headline }]} numberOfLines={2}>
-            {row.headline}
-          </Text>
+          {/* Unclamped, because the four verdict lines are two or three words
+              and never reach a second line, while the fifth headline a card can
+              carry is git's own error text. A two-line clamp only ever bit that
+              one, and what it cut was the half of the sentence naming the
+              cause. A card that has to say `fatal: not a git repository` is
+              already the card the reader stops at, so it is allowed the height.
+              No button sits beside it either: an error verdict is never ready,
+              so the head row's optical lift is not in play. */}
+          <Text style={[styles.headline, { color: headline }]}>{row.headline}</Text>
         </View>
         {buttonInHead ? shipControl : null}
       </View>
@@ -445,7 +464,7 @@ export function ShipCard({ row, agentId, theme, compact, footnote = null }: Ship
           style={{ flexDirection: "row", alignItems: "center", gap: type.px(6), flexShrink: 1 }}
         >
           <Icon name="Check" size={type.px(META.size)} color={theme.colors.foregroundMuted} />
-          <Text style={styles.footnote} numberOfLines={1}>
+          <Text style={styles.footnote} numberOfLines={2}>
             {row.passed} check{row.passed === 1 ? "" : "s"} passed
             {footnote ? ` · ${footnote}` : ""}
             {stale ? " · no longer current" : ""}
