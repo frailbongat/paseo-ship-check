@@ -4,8 +4,15 @@ import { startSettingsSync } from "./client/settings-sync";
 import { runShipCheck } from "./client/ship-actions";
 import { addShipEchoTransformer } from "./client/ship-echo";
 import { SHIP_PANEL_ID, ShipPanel } from "./client/ship-panel";
+import { addShipResultTransformer } from "./client/ship-result";
+import { ShipResultItem } from "./client/ship-result-card";
 import { ShipRowItem } from "./client/ship-row";
 import { clearAllVerdicts, clearVerdict } from "./client/ship-store";
+import {
+  SHIP_RESULT_KIND,
+  SHIP_RESULT_VERSION,
+  ShipResultSchema,
+} from "./shared/ship-report";
 import { SHIP_ROW_KIND, SHIP_ROW_VERSION, ShipRowSchema } from "./shared/timeline";
 
 const SETTINGS_SCREEN_ID = "settings";
@@ -37,6 +44,16 @@ export default function contribute(client: PluginClientContext) {
     version: SHIP_ROW_VERSION,
     schema: ShipRowSchema,
     Component: ShipRowItem,
+  });
+  // The other end of the same story. The verdict card above says a branch could
+  // ship; this pair replaces the report `/ship` writes when it did, with the
+  // same card read the other way round.
+  const stopShipResult = addShipResultTransformer(client);
+  client.addTimelineRenderer({
+    kind: SHIP_RESULT_KIND,
+    version: SHIP_RESULT_VERSION,
+    schema: ShipResultSchema,
+    Component: ShipResultItem,
   });
   client.addCommandCenterItem({
     id: "ship-recheck",
@@ -84,6 +101,7 @@ export default function contribute(client: PluginClientContext) {
   });
 
   return () => {
+    stopShipResult();
     stopSettingsSync();
     unsubscribe();
     clearAllVerdicts();

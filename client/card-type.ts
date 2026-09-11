@@ -44,6 +44,12 @@ const FONT_FAMILIES: Record<CardFont, string | undefined> = {
 };
 
 /**
+ * The monospace face on its own, for the one run of text that is set in it
+ * whatever the reader chose: a commit hash, which is not words.
+ */
+export const MONO_FONT_FAMILY = FONT_FAMILIES.mono;
+
+/**
  * Small enough to fit more history on screen, large enough to read across a
  * room, and neither far enough from 1 to turn the card into something else.
  */

@@ -39,6 +39,16 @@ Paseo submits a provider slash command as ordinary message text, so the card's *
 
 It matches on the first word, so `/ship main` and `/ship verbose` go too, and it follows the **Ship command** setting. A message with a line break is prose and stays. Only the echo is removed: ship's notices and the verdict card still show.
 
+### The result gets a card too
+
+`/ship` ends on a report: `Shipped 1a2b3c4 to origin/main.`, the commit subject, and which checks ran or why they were skipped, written as one plain assistant message. A second transformer reads that message back and draws it as a card, with the short SHA in the corner the verdict card keeps its **Ship** button in. Anything else the report said is kept under the checks as a muted note, so replacing the message loses nothing.
+
+The card takes the message's place while it is still being written rather than after. The host's own streaming phase is no help there, since Paseo calls a message row complete from its first token, so the parser reads the text: the destination is only taken once a character follows it, and the card never shows half of `origin/main`. Everything else fills in as it arrives, and a field the report never mentioned stays empty instead of being guessed.
+
+A commit whose push failed gets the same card in red, headed `Committed, push failed`, because that is the run where the hash matters most. Nothing else changes shape: a message that does not open a line by saying a commit was shipped is not a ship report, and Paseo renders it exactly as before.
+
+The ship extension is the exception. It prints the same result through `ctx.ui.notify`, which lands as a `notification` row, and a transformer cannot select one: the app takes `user_message`, `assistant_message`, `reasoning`, `tool_call`, `todo`, `error`, and `compaction`, and rejects the registration with `invalid item type` for anything else. `AgentTimelineItem` in the SDK is wider than that list, so the mistake typechecks and fails at load. Under the extension the notice keeps its plain row, and the verdict card above it is the one with the ship on it.
+
 ## How the verdict is computed
 
 The verdict mirrors the ship extension step for step, because a card that disagrees with `/ship` is worse than no card. The daemon recomputes it when a turn ends, through an `agent.turn_ended` lifecycle hook, and parks it per agent. That runs with no app connected, so the card and the panel read a finished verdict the moment they are on screen instead of starting a check and spinning. **Re-check ship readiness** in the Command Center (⌘K) and the panel's **Re-check** button force a fresh run.
@@ -95,7 +105,7 @@ The timeline transformer answers synchronously and runs outside React, where no 
 
 | File | Runtime | Role |
 | --- | --- | --- |
-| `index.client.tsx` | client | Registers the settings screen, the panel, the Command Center items, the `/ship-check` slash command, the timeline transformer and renderer |
+| `index.client.tsx` | client | Registers the settings screen, the panel, the Command Center items, the `/ship-check` slash command, the timeline transformers and renderers |
 | `index.server.ts` | server | Registers the settings document, the RPC handlers and the turn-end hook |
 | `client/ship-card.tsx` | client | The verdict card and its ship button, shared by the timeline row and the panel |
 | `client/action-button.tsx` / `client/spinner.tsx` | client | Button chrome shared by the card and the panel, and the spinner a busy button draws |
@@ -104,8 +114,11 @@ The timeline transformer answers synchronously and runs outside React, where no 
 | `client/ship-actions.ts` | client | The forced re-check shared by the Command Center item and `/ship-check` |
 | `client/ship-row.tsx` | client | Timeline renderer that hands the daemon's row to the card |
 | `client/ship-echo.ts` | client | Timeline transformer that hides the `/ship` message the send leaves behind |
+| `client/ship-result.ts` | client | Timeline transformer that catches the finished ship in the streaming report message |
+| `client/ship-result-card.tsx` | client | The finished-ship card and its renderer, built on the verdict card's own geometry |
 | `client/settings-screen.tsx` / `client/settings-store.ts` / `client/settings-sync.ts` | client | Settings screen, client-side value cache, and the read that keeps it warm |
 | `shared/ship.ts` / `shared/timeline.ts` / `shared/settings.ts` | shared | Zod RPC contracts, versioned verdict schema and helpers, the timeline row contract, the persisted document |
+| `shared/ship-report.ts` | shared | Reads a ship report out of the message it was written in, half-written or finished |
 | `server/ship.ts` | server | Git plumbing, quality checks, quality cache |
 | `server/ship-cache.ts` | server | Per-agent verdict cache filled at turn end, read by the panel |
 | `server/timeline.ts` | server | Mints a card id per turn, retires the previous card, appends the verdict |
