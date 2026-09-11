@@ -49,6 +49,24 @@ interface ShipCard {
 const currentRowIds = new Map<string, string>();
 
 /**
+ * Cards this process retired after the snapshot it is working from was taken.
+ *
+ * A turn-end hook hands out one timeline snapshot and every publish in that
+ * turn reads it, so a card retired early in the turn still looks live to the
+ * publish that follows. That is not a wasted append, it is a lost one: the
+ * sweep would re-append the snapshot's older copy of the row and undo the ship
+ * report just written onto it. Ids land here as they are retired and are read
+ * back as "already stale, leave alone".
+ */
+const retiredRowIds = new Map<string, Set<string>>();
+
+function markRetired(agentId: string, id: string): void {
+  const ids = retiredRowIds.get(agentId);
+  if (ids) ids.add(id);
+  else retiredRowIds.set(agentId, new Set([id]));
+}
+
+/**
  * Ids must stay unique for the life of the daemon's timeline, which outlives
  * this plugin's process. A counter alone would restart at 1 after a reload and
  * silently overwrite a card from before it, so the mint carries the clock too.
@@ -97,8 +115,22 @@ function shipCards(timeline: readonly unknown[]): ShipCard[] {
   return [...latest].map(([id, data]) => ({ id, data }));
 }
 
-function liveShipCards(timeline: readonly unknown[]): ShipCard[] {
-  return shipCards(timeline).filter((card) => !card.data.stale);
+function liveShipCards(agentId: string, timeline: readonly unknown[]): ShipCard[] {
+  const live = shipCards(timeline).filter((card) => !card.data.stale);
+  const retired = retiredRowIds.get(agentId);
+  if (!retired) return live;
+
+  // An id is only worth remembering while a snapshot still calls that row live.
+  // Once the snapshot agrees it is stale, or no longer carries the row at all,
+  // the timeline is saying what this set was saying, and holding the id past
+  // that would grow the set by one every turn the daemon runs.
+  const liveIds = new Set(live.map((card) => card.id));
+  for (const id of retired) {
+    if (!liveIds.has(id)) retired.delete(id);
+  }
+  if (retired.size === 0) retiredRowIds.delete(agentId);
+
+  return live.filter((card) => !retired.has(card.id));
 }
 
 /**
@@ -140,14 +172,16 @@ export async function attachShipResult(
 ): Promise<boolean> {
   // The newest live card, which is the one the button was on: an older live
   // card can only exist if an append failed to retire it.
-  const card = liveShipCards(timeline).at(-1);
+  const card = liveShipCards(agentId, timeline).at(-1);
   if (!card) return false;
 
   if (!(await appendRow(paseo, agentId, card.id, { ...card.data, stale: true, shipped: result }))) {
     return false;
   }
-  // The card is history now, so a re-check must mint a new one rather than
-  // overwrite the report that replaced it.
+  // Both halves of "this card is done": the retire sweep later in this same
+  // turn must not write the snapshot's pre-ship copy back over the report, and
+  // a re-check must mint a new card rather than overwrite it.
+  markRetired(agentId, card.id);
   currentRowIds.delete(agentId);
   return true;
 }
@@ -201,8 +235,10 @@ export async function publishShipRow(
     // Every card older than this turn goes read-only, whether or not this turn
     // publishes one of its own. A card that keeps its button after the tree
     // moved on is an offer to ship something nobody checked.
-    for (const card of liveShipCards(timeline)) {
-      await appendRow(paseo, agentId, card.id, { ...card.data, stale: true });
+    for (const card of liveShipCards(agentId, timeline)) {
+      if (await appendRow(paseo, agentId, card.id, { ...card.data, stale: true })) {
+        markRetired(agentId, card.id);
+      }
     }
     currentRowIds.delete(agentId);
 
@@ -229,4 +265,5 @@ export async function publishShipRow(
 
 export function clearPublishedRows(): void {
   currentRowIds.clear();
+  retiredRowIds.clear();
 }
