@@ -47,7 +47,11 @@ The card takes the message's place while it is still being written rather than a
 
 A commit whose push failed gets the same card in red, headed `Committed, push failed`, because that is the run where the hash matters most. Nothing else changes shape: a message that does not open a line by saying a commit was shipped is not a ship report, and Paseo renders it exactly as before.
 
-The ship extension is the exception. It prints the same result through `ctx.ui.notify`, which lands as a `notification` row, and a transformer cannot select one: the app takes `user_message`, `assistant_message`, `reasoning`, `tool_call`, `todo`, `error`, and `compaction`, and rejects the registration with `invalid item type` for anything else. `AgentTimelineItem` in the SDK is wider than that list, so the mistake typechecks and fails at load. Under the extension the notice keeps its plain row, and the verdict card above it is the one with the ship on it.
+The ship extension reports through `ctx.ui.notify` instead, and that lands as a `notification` row, which a transformer may not select: the app takes `user_message`, `assistant_message`, `reasoning`, `tool_call`, `todo`, `error`, and `compaction`, and rejects the registration with `invalid item type` for anything else. `AgentTimelineItem` in the SDK is wider than that list, so the mistake typechecks and fails at load.
+
+The daemon is not held to that list. The turn-end hook already receives the agent's timeline, notices and all, so `server/ship-result.ts` reads the report there and publishes the same card through the same renderer. The plain line stays above it, because no 0.8 API removes or rewrites a row the provider wrote. One card per commit: the row id is the hash, and a hash already on the timeline is left alone, so a card is never published twice however many turns follow. The extension only lists its checks under `/ship verbose`, so an ordinary run draws a card reading `Checks not reported`.
+
+A push that failed is reported as an error row rather than a notice, and it gets a card too, because that is the run whose hash a reader most needs.
 
 ## How the verdict is computed
 
@@ -106,7 +110,7 @@ The timeline transformer answers synchronously and runs outside React, where no 
 | File | Runtime | Role |
 | --- | --- | --- |
 | `index.client.tsx` | client | Registers the settings screen, the panel, the Command Center items, the `/ship-check` slash command, the timeline transformers and renderers |
-| `index.server.ts` | server | Registers the settings document, the RPC handlers and the turn-end hook |
+| `index.server.ts` | server | Registers the settings document, the RPC handlers and the turn-end hook that publishes both cards |
 | `client/ship-card.tsx` | client | The verdict card and its ship button, shared by the timeline row and the panel |
 | `client/action-button.tsx` / `client/spinner.tsx` | client | Button chrome shared by the card and the panel, and the spinner a busy button draws |
 | `client/card-type.ts` | client | Turns the type settings into the font family and scale every length in the card is drawn at |
@@ -122,6 +126,7 @@ The timeline transformer answers synchronously and runs outside React, where no 
 | `server/ship.ts` | server | Git plumbing, quality checks, quality cache |
 | `server/ship-cache.ts` | server | Per-agent verdict cache filled at turn end, read by the panel |
 | `server/timeline.ts` | server | Mints a card id per turn, retires the previous card, appends the verdict |
+| `server/ship-result.ts` | server | Reads the ship report out of the turn's notices and publishes the card the client cannot |
 
 `client/action-button.tsx` carries a `busy` state and only **Re-check** uses it. A spinner is for work nothing else on screen reports; the ship's work is a turn, and Paseo spins for that already.
 
