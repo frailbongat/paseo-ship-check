@@ -26,13 +26,13 @@
  * size per line, so the corrections below, the lifted headline and the trimmed
  * top padding, stay true at any size.
  *
- * Within that scale the card sets everything on three sizes and no more:
- * `HEADING` for the verdict, `BODY` for the lines a reader actually reads, and
- * `META` for the ones they only glance at. The verdict is the reason the card
- * exists and has to land from a laptop's reading distance, so it is far enough
- * above the rest to be found without looking for it. Body and meta used to sit
- * a point apart, which is a difference the eye reads as an accident rather than
- * as rank; two points and a colour apart is a hierarchy.
+ * Within that scale the card sets everything on the three sizes in
+ * `card-type.ts` and no more, and the result card sets itself on the same
+ * three. A title is a title at one size wherever it is drawn.
+ *
+ * The button carries no ship icon. The card already wears one, in the title,
+ * where every variant can wear it; the button is the only slot that cannot
+ * promise that, since a blocked verdict has no button. See `ShipButton`.
  *
  * The button draws no progress of its own. The command it sends starts an
  * ordinary turn, and Paseo already reports a running turn in the stream footer,
@@ -47,7 +47,7 @@ import { Icon } from "@getpaseo/plugin/client/react-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Text, View } from "react-native";
 import { ActionButton } from "./action-button";
-import { useCardType, type CardType } from "./card-type";
+import { BODY, META, TITLE, useCardType, type CardType } from "./card-type";
 import { useShipSettings } from "./settings-store";
 import type { ShipCheck } from "../shared/ship";
 import type { ShipRow } from "../shared/timeline";
@@ -71,7 +71,7 @@ function statusColor(row: ShipRow, theme: PluginTheme): string {
  * and the head row is then a single line of text. Reading that off `ready`
  * anywhere else in the layout was what tipped the blocked card's headline out
  * of place: the optical corrections a 34pt button needs were being applied to a
- * row that had nothing in it but a 26pt line.
+ * row that had nothing in it but a line of text.
  */
 function hasAction(row: ShipRow): boolean {
   return row.ready;
@@ -79,18 +79,6 @@ function hasAction(row: ShipRow): boolean {
 
 /** A disabled button never fires this, and `ActionButton` requires a handler. */
 function noop(): void {}
-
-/**
- * The card's three sizes, before the reader's scale is applied to them.
- *
- * Compact is the timeline on a phone, where the heading gives back two points
- * rather than pushing the branch line into an ellipsis. Body and meta hold:
- * they are already the smallest sizes worth setting, and shrinking them to buy
- * width would cost the thing the width is for.
- */
-const HEADING = { size: 20, leading: 26, compactSize: 18, compactLeading: 23 } as const;
-const BODY = { size: 15, leading: 21 } as const;
-const META = { size: 13, leading: 18 } as const;
 
 function checkTime(checkedAt: string): string {
   return new Date(checkedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
@@ -152,6 +140,9 @@ function CheckLine({
 
 /**
  * The ship, and nothing else: it sends the command or it says why it could not.
+ * It is a label and no glyph: the ship mark belongs to the title, which is the
+ * one slot every variant has, and a card that draws it twice spends its only
+ * accent twice.
  * The card only renders it for a ready verdict, so what is left to guard is a
  * second press while the first is on the wire and an agent that started running
  * since the card was drawn.
@@ -230,7 +221,6 @@ function ShipButton({
     <ActionButton
       theme={theme}
       tone="primary"
-      icon="Ship"
       label="Ship"
       scale={type.scale}
       fontFamily={type.fontFamily}
@@ -274,10 +264,9 @@ export function ShipCard({ row, agentId, theme, compact, footnote = null }: Ship
    */
   const buttonInHead = action && !compact;
   const buttonBelowMeta = action && compact;
-  // The head row is 34pt tall around a 26pt line whenever it holds a button, so
-  // part of the space under the headline is already paid for there. Less of it
-  // than there used to be: the taller heading eats into the same 34pt row, so
-  // the gap under it takes back what the row stopped giving.
+  // The head row is 34pt tall around a 23pt line whenever it holds a button, so
+  // part of the space under the headline is already paid for there, and the gap
+  // under it only has to make up the rest.
   const metaGap = type.px(buttonInHead ? 8 : 11);
 
   const styles = useMemo(
@@ -312,23 +301,23 @@ export function ShipCard({ row, agentId, theme, compact, footnote = null }: Ship
         gap: type.px(8),
         flexShrink: 1,
         // Centring two texts of different sizes lines up their boxes, not their
-        // letters, and the 20pt headline reads low beside the 13pt button label.
-        // The gap between their baselines is about three pixels now the heading
-        // is the larger of the two by more; this lifts further than that,
-        // sitting the headline high in the row on purpose, which is what reads
-        // as level against a filled button. Whole pixels only, so a 1x browser
-        // client does not render the row on a half pixel. No button, no lift:
-        // there is nothing to be level with.
+        // letters, and the 18pt title reads low beside the 13pt button label.
+        // The gap between their baselines is under two pixels at this size; the
+        // lift doubles that, sitting the title high in the row on purpose, which
+        // is what reads as level against a filled button. It was five when the
+        // title was 20pt and would over-correct now. Whole pixels only, so a 1x
+        // browser client does not render the row on a half pixel. No button, no
+        // lift: there is nothing to be level with.
         ...(compact ? {} : { flexGrow: 1, flexBasis: 0 }),
-        ...(buttonInHead ? { transform: [{ translateY: -type.px(5) }] as const } : {}),
+        ...(buttonInHead ? { transform: [{ translateY: -type.px(4) }] as const } : {}),
       },
       // An explicit line height is what makes the centring honest. Left to its
       // default, a `Text` box carries leading the eye does not see, and the
       // headline centres that invisible box against the button instead of its
       // own letters.
       headline: {
-        fontSize: type.px(compact ? HEADING.compactSize : HEADING.size),
-        lineHeight: type.px(compact ? HEADING.compactLeading : HEADING.leading),
+        fontSize: type.px(TITLE.size),
+        lineHeight: type.px(TITLE.leading),
         fontWeight: "600" as const,
         fontFamily: type.fontFamily,
         flexShrink: 1,
@@ -403,7 +392,6 @@ export function ShipCard({ row, agentId, theme, compact, footnote = null }: Ship
     <ActionButton
       theme={theme}
       tone="primary"
-      icon="Ship"
       label="Ship"
       scale={type.scale}
       fontFamily={type.fontFamily}
@@ -420,7 +408,7 @@ export function ShipCard({ row, agentId, theme, compact, footnote = null }: Ship
     <View style={styles.card}>
       <View style={styles.head}>
         <View style={styles.title}>
-          <Icon name="Ship" size={type.px(compact ? 17 : 18)} color={headline} />
+          <Icon name="Ship" size={type.px(TITLE.icon)} color={headline} />
           {/* Unclamped, because the four verdict lines are two or three words
               and never reach a second line, while the fifth headline a card can
               carry is git's own error text. A two-line clamp only ever bit that

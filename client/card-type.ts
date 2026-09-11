@@ -59,6 +59,35 @@ const SCALES: Record<CardTextSize, number> = {
   large: 1.15,
 };
 
+/**
+ * The three sizes every card sets its text on, before the reader's scale is
+ * applied to them.
+ *
+ * One scale, one place, because the verdict card and the result card are the
+ * same object seen twice and a reader reads them in one stream. Two cards that
+ * set the same slot at different sizes read as two different components, which
+ * is what the result card used to do: a 15pt title against the verdict's 20,
+ * a 13pt subject against a 15pt branch, an 11pt footer against a 13pt one.
+ *
+ * `TITLE` is the line that names the card, `BODY` is the lines a reader
+ * actually reads, and `META` is the ones they only glance at. Body and meta
+ * used to sit a point apart, which is a difference the eye reads as an
+ * accident rather than as rank; two points and a colour apart is a hierarchy.
+ *
+ * The title is one size in every variant and at every width. It was 20pt beside
+ * a ship button and 18 on a phone, which bought the branch line two points of
+ * width on the narrow card and cost every card a title that changed size when
+ * the panel did. 18 everywhere buys that width everywhere, and it still clears
+ * body by three points, which is the gap that makes it findable without
+ * looking for it.
+ *
+ * `icon` is the glyph that sits before the title. A hair under the text, so it
+ * reads as set with the line rather than stamped on it.
+ */
+export const TITLE = { size: 18, leading: 23, icon: 16 } as const;
+export const BODY = { size: 15, leading: 21 } as const;
+export const META = { size: 13, leading: 18 } as const;
+
 export interface CardType {
   /** `undefined` is the client's own text, which is the default. */
   fontFamily: string | undefined;

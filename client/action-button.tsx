@@ -3,7 +3,12 @@
  *
  * Both surfaces draw their own buttons now, so they draw the same one: same
  * height, same radius, same icon slot, and the same rule that a busy button
- * swaps its icon for the spinner rather than growing or moving. `busy` and
+ * swaps its icon for the spinner rather than growing or moving. The icon is
+ * optional, for the one case where the surface already carries that mark: the
+ * ship card wears a ship in its title, and a second one on the button beside it
+ * is the same word said twice. A label-only button still shows the spinner,
+ * because busy has to be visible whether or not the button was ever wearing a
+ * glyph. `busy` and
  * `disabled` are separate on purpose. Busy is work this button started and
  * keeps its colour; disabled is a button that cannot act yet and goes quiet.
  *
@@ -22,8 +27,11 @@ export interface ActionButtonProps {
   theme: PluginTheme;
   /** `primary` is the one action a surface wants pressed; `quiet` is the rest. */
   tone: "primary" | "quiet";
-  /** Lucide icon name, replaced by the spinner while the button is busy. */
-  icon: string;
+  /**
+   * Lucide icon name, replaced by the spinner while the button is busy. Omit it
+   * where the surface around the button already draws the same mark.
+   */
+  icon?: string;
   label: string;
   accessibilityLabel: string;
   accessibilityHint?: string;
@@ -95,9 +103,9 @@ export function ActionButton({
     >
       {busy ? (
         <Spinner color={foreground} trackColor={background} size={px(14)} />
-      ) : (
+      ) : icon ? (
         <Icon name={icon} size={px(14)} color={foreground} />
-      )}
+      ) : null}
       <Text style={{ color: foreground, fontSize: px(13), fontWeight: "600", fontFamily }}>
         {label}
       </Text>
