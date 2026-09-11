@@ -6,7 +6,6 @@ import {
   refreshAgentVerdict,
 } from "./server/ship-cache";
 import { clearQualityCache } from "./server/ship";
-import { publishShipResult } from "./server/ship-result";
 import { clearPublishedRows, publishShipRow } from "./server/timeline";
 import { clearShipRowRestores, restoreShipRow } from "./server/timeline-restore";
 import { shipSettings } from "./shared/settings";
@@ -39,10 +38,6 @@ export default function contribute(server: PluginServerContext) {
     const { id, cwd } = event.agent;
     if (!cwd.trim()) return;
     try {
-      // What `/ship` said it did, before what the tree says is left. The report
-      // is a row the client cannot transform, so the card for it is published
-      // from here; a turn that shipped nothing finds nothing to publish.
-      await publishShipResult(context.paseo, id, event.timeline);
       // Never forced: the quality cache key already carries the tree's dirty
       // state, so a turn that changed nothing reuses the previous run.
       const verdict = await refreshAgentVerdict(id, cwd);

@@ -60,21 +60,19 @@ const SCALES: Record<CardTextSize, number> = {
 };
 
 /**
- * The three sizes every card sets its text on, before the reader's scale is
+ * The three sizes the card sets its text on, before the reader's scale is
  * applied to them.
  *
- * One scale, one place, because the verdict card and the result card are the
- * same object seen twice and a reader reads them in one stream. Two cards that
- * set the same slot at different sizes read as two different components, which
- * is what the result card used to do: a 15pt title against the verdict's 20,
- * a 13pt subject against a 15pt branch, an 11pt footer against a 13pt one.
+ * One scale, one place: a slot that is set at one size in the timeline and
+ * another in the panel reads as two different components rather than as one
+ * card drawn twice.
  *
  * `TITLE` is the line that names the card, `BODY` is the lines a reader
  * actually reads, and `META` is the ones they only glance at. Body and meta
  * used to sit a point apart, which is a difference the eye reads as an
  * accident rather than as rank; two points and a colour apart is a hierarchy.
  *
- * The title is one size in every variant and at every width. It was 20pt beside
+ * The title is one size at every width. It was 20pt beside
  * a ship button and 18 on a phone, which bought the branch line two points of
  * width on the narrow card and cost every card a title that changed size when
  * the panel did. 18 everywhere buys that width everywhere, and it still clears

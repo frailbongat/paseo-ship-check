@@ -27,12 +27,12 @@
  * top padding, stay true at any size.
  *
  * Within that scale the card sets everything on the three sizes in
- * `card-type.ts` and no more, and the result card sets itself on the same
- * three. A title is a title at one size wherever it is drawn.
+ * `card-type.ts` and no more. A title is a title at one size wherever it is
+ * drawn.
  *
  * The button carries no ship icon. The card already wears one, in the title,
- * where every variant can wear it; the button is the only slot that cannot
- * promise that, since a blocked verdict has no button. See `ShipButton`.
+ * where it is drawn whatever the verdict says; the button is the only slot that
+ * cannot promise that, since a blocked verdict has no button. See `ShipButton`.
  *
  * The button draws no progress of its own. The command it sends starts an
  * ordinary turn, and Paseo already reports a running turn in the stream footer,

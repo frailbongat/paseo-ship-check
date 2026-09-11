@@ -16,7 +16,6 @@
  */
 
 import { z } from "zod";
-import { ShipResultSchema } from "./ship-report";
 import {
   ShipCheckSchema,
   type ShipVerdict,
@@ -64,16 +63,6 @@ export const ShipRowSchema = z.object({
    * next turn end retires them like any other.
    */
   stale: z.boolean().default(false),
-  /**
-   * The ship this card's own verdict led to, once it happened.
-   *
-   * A ready verdict and the ship it produced are one thing in two states, so
-   * the second is written back onto the first rather than appended under it:
-   * the card the reader pressed turns into the report of what that press did,
-   * in place. Every earlier card stays where it is, so history still reads as
-   * history. Absent on a card whose turn never shipped, which is most of them.
-   */
-  shipped: ShipResultSchema.nullish().transform((value) => value ?? null),
 });
 
 export type ShipRow = z.infer<typeof ShipRowSchema>;
@@ -95,6 +84,5 @@ export function toShipRow(verdict: ShipVerdict): ShipRow {
     warnings: warningChecks(verdict),
     passed: passedCount(verdict),
     stale: false,
-    shipped: null,
   };
 }
