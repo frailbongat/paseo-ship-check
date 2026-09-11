@@ -8,6 +8,7 @@ import {
 import { clearQualityCache } from "./server/ship";
 import { publishShipResult } from "./server/ship-result";
 import { clearPublishedRows, publishShipRow } from "./server/timeline";
+import { clearShipRowRestores, restoreShipRow } from "./server/timeline-restore";
 import { shipSettings } from "./shared/settings";
 import { readCachedShipVerdict, readShipVerdict, verdictLine } from "./shared/ship";
 
@@ -59,8 +60,24 @@ export default function contribute(server: PluginServerContext) {
     }
   });
 
+  // Opening an agent the daemon has unloaded, and reloading one it still has,
+  // both rebuild the timeline out of the provider's own history and drop every
+  // plugin row with it. Nothing reports that, so the card is republished off the
+  // session open that causes it.
+  const stopWatchingOpens = server.before("agent.session_open", ({ request }, context) => {
+    // An archived agent is opened for reading, and a created one has no card to
+    // lose: its first turn end publishes one.
+    if (request.purpose !== "interactive") return;
+    if (request.reason !== "resume" && request.reason !== "refresh") return;
+    // Deliberately not awaited. The session is held open until this hook
+    // returns, and the rebuild it is waiting on has not started yet.
+    void restoreShipRow(context.paseo, request.agentId, request.cwd);
+  });
+
   return () => {
     stopWatchingTurns();
+    stopWatchingOpens();
+    clearShipRowRestores();
     clearPublishedRows();
     clearAgentVerdicts();
     clearQualityCache();

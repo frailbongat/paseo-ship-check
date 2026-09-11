@@ -127,13 +127,14 @@ export interface PublishShipRowOptions {
   timeline?: readonly unknown[];
 }
 
+/** The id of the card on screen when this returns, or `null` if there is none. */
 export async function publishShipRow(
   paseo: Paseo,
   agentId: string,
   verdict: ShipVerdict,
   { fresh, timeline = [] }: PublishShipRowOptions,
-): Promise<void> {
-  if (!verdict.isRepo) return;
+): Promise<string | null> {
+  if (!verdict.isRepo) return null;
   const row = toShipRow(verdict);
 
   if (fresh) {
@@ -147,20 +148,23 @@ export async function publishShipRow(
 
     // A clean tree has nothing to report, so no card is published at all and
     // the turn passes in silence.
-    if (!hasVerdict(verdict)) return;
+    if (!hasVerdict(verdict)) return null;
 
     const id = mintRowId();
-    if (await appendRow(paseo, agentId, id, row)) currentRowIds.set(agentId, id);
-    return;
+    if (!(await appendRow(paseo, agentId, id, row))) return null;
+    currentRowIds.set(agentId, id);
+    return id;
   }
 
   // A re-check, which belongs to the turn already on screen. It corrects that
   // card even when the answer is now `Nothing to ship`, because that card is
   // the present rather than history.
   const currentId = currentRowIds.get(agentId);
-  if (!currentId && !hasVerdict(verdict)) return;
+  if (!currentId && !hasVerdict(verdict)) return null;
   const id = currentId ?? mintRowId();
-  if (await appendRow(paseo, agentId, id, row)) currentRowIds.set(agentId, id);
+  if (!(await appendRow(paseo, agentId, id, row))) return null;
+  currentRowIds.set(agentId, id);
+  return id;
 }
 
 export function clearPublishedRows(): void {

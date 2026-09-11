@@ -13,8 +13,11 @@
  * as a plugin row through the same renderer the message path uses.
  *
  * What this cannot do is take the notice away. No 0.8 API removes or rewrites a
- * row the provider wrote, so under the extension the plain line stays and the
- * card lands beneath it, which is as close to replacing it as a plugin gets.
+ * row the provider wrote, so a printed report keeps its plain line and the card
+ * lands beneath it. The extension's answer is not to print one: under Paseo,
+ * with this plugin enabled, it writes the report to a file instead, and
+ * `ship-handoff.ts` reads it here. That file is checked first, because when it
+ * exists there is no notice on the timeline to find.
  *
  * One card per commit, ever. The hook's snapshot carries every notice the
  * conversation has collected, so the row id is minted from the hash and a hash
@@ -23,6 +26,7 @@
  */
 
 import type { PluginHandlerContext } from "@getpaseo/plugin/server";
+import { takeHandedOffReport } from "./ship-handoff";
 import {
   SHIP_RESULT_KIND,
   SHIP_RESULT_VERSION,
@@ -84,8 +88,11 @@ export async function publishShipResult(
   agentId: string,
   timeline: readonly unknown[],
 ): Promise<void> {
-  let newest: ShipResult | null = null;
-  for (const entry of timeline) {
+  // The handed-off report is this turn's by construction, and it is consumed as
+  // it is read, so an unchanged timeline cannot replay it on the next turn.
+  const handedOff = await takeHandedOffReport(agentId);
+  let newest: ShipResult | null = handedOff;
+  for (const entry of handedOff ? [] : timeline) {
     const text = reportedText(entry);
     if (!text) continue;
     // A notice is posted in one piece, so nothing here is half-written and the
