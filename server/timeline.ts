@@ -23,6 +23,7 @@
 import type { PluginHandlerContext } from "@getpaseo/plugin/server";
 import { type ShipVerdict, hasVerdict } from "../shared/ship";
 import {
+  SHIP_PLUGIN_ID,
   SHIP_ROW_KIND,
   SHIP_ROW_PREFIX,
   SHIP_ROW_VERSION,
@@ -54,20 +55,34 @@ function mintRowId(): string {
 }
 
 /**
- * Every ship card in this timeline that still offers a ship.
+ * Every ship card *this plugin wrote* into this timeline that still offers a
+ * ship.
  *
  * Each append is its own row in the daemon's store and the app collapses them
  * by id, so one card can appear several times here. The last entry for an id is
  * the one on screen, which is why this keeps that one and judges `stale` from
  * it: retiring an already-retired card would cost an append on every turn.
+ *
+ * A row another plugin owns is skipped even when it carries this exact `kind`
+ * and id shape. An append cannot reach across plugins to retire it, so trying
+ * only adds a duplicate card under this plugin's name, one per turn, forever.
  */
 function liveShipCards(timeline: readonly unknown[]): ShipCard[] {
   const latest = new Map<string, ShipRow>();
 
   for (const entry of timeline) {
     if (!entry || typeof entry !== "object") continue;
-    const item = entry as { type?: unknown; kind?: unknown; id?: unknown; data?: unknown };
+    const item = entry as {
+      type?: unknown;
+      kind?: unknown;
+      id?: unknown;
+      data?: unknown;
+      pluginId?: unknown;
+    };
     if (item.type !== "plugin" || item.kind !== SHIP_ROW_KIND) continue;
+    // Absent on a daemon that does not stamp it, where the prefix check below
+    // is the only ownership signal available.
+    if (typeof item.pluginId === "string" && item.pluginId !== SHIP_PLUGIN_ID) continue;
     if (typeof item.id !== "string" || !item.id.startsWith(SHIP_ROW_PREFIX)) continue;
     const parsed = ShipRowSchema.safeParse(item.data);
     if (!parsed.success) continue;

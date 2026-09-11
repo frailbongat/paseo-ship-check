@@ -31,6 +31,18 @@ export const SHIP_ROW_KIND = "ship-blockers";
 export const SHIP_ROW_VERSION = 1;
 /** Every minted row id starts with this. `server/timeline.ts` mints them. */
 export const SHIP_ROW_PREFIX = "ship-blockers";
+/**
+ * This plugin's own id, which must match `paseo-plugin.json`.
+ *
+ * The daemon stamps `pluginId` on every row it accepts and keys rows by that
+ * plus the row id, so an append only replaces a row the same plugin wrote. A
+ * second plugin publishing this `kind`, which is what an older build of this
+ * code left behind when the ship check moved into its own plugin, owns a
+ * parallel set of ids. Re-appending one of those ids from here retires nothing:
+ * it writes a new row under this plugin's name, which is how one card per turn
+ * became a screenful.
+ */
+export const SHIP_PLUGIN_ID = "paseo-ship-check";
 
 export const ShipRowSchema = z.object({
   /** `Ready to ship`, `2 blockers`, or whatever the verdict says in one line. */

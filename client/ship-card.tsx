@@ -15,6 +15,12 @@
  * described has moved on, so shipping from it would ship something the reader
  * never checked.
  *
+ * That card recedes whole. A timeline collects one of these per turn, so an old
+ * verdict that keeps its fill, its foreground text, and its red check rows
+ * competes with the live one at full volume and the stream reads as a wall of
+ * cards. History drops to the background it sits on and goes monochrome, which
+ * leaves exactly one card in the stream carrying surface and colour.
+ *
  * The button draws no progress of its own. The command it sends starts an
  * ordinary turn, and Paseo already reports a running turn in the stream footer,
  * so a second spinner on the card would only be the same news twice. The button
@@ -43,6 +49,20 @@ function statusColor(row: ShipRow, theme: PluginTheme): string {
   return row.blockers.length > 0 ? theme.colors.statusDanger : theme.colors.foregroundMuted;
 }
 
+/**
+ * Whether the card carries a button at all.
+ *
+ * A ready verdict gets one either way: live it ships, stale it is the disabled
+ * twin. Everything else, a blocked verdict most of all, has nothing to offer,
+ * and the head row is then a single line of text. Reading that off `ready`
+ * anywhere else in the layout was what tipped the blocked card's headline out
+ * of place: the optical corrections a 34pt button needs were being applied to a
+ * row that had nothing in it but a 20pt line.
+ */
+function hasAction(row: ShipRow): boolean {
+  return row.ready;
+}
+
 /** A disabled button never fires this, and `ActionButton` requires a handler. */
 function noop(): void {}
 
@@ -50,9 +70,22 @@ function checkTime(checkedAt: string): string {
   return new Date(checkedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 }
 
-function CheckLine({ check, theme }: { check: ShipCheck; theme: PluginTheme }) {
+function CheckLine({
+  check,
+  theme,
+  muted,
+}: {
+  check: ShipCheck;
+  theme: PluginTheme;
+  /** A card whose turn has passed. Shape still separates a fail from a warn. */
+  muted: boolean;
+}) {
   const failed = check.status === "fail";
-  const color = failed ? theme.colors.statusDanger : theme.colors.statusWarning;
+  const color = muted
+    ? theme.colors.foregroundMuted
+    : failed
+      ? theme.colors.statusDanger
+      : theme.colors.statusWarning;
 
   return (
     <View style={{ flexDirection: "row", gap: 8, alignItems: "flex-start" }}>
@@ -60,7 +93,13 @@ function CheckLine({ check, theme }: { check: ShipCheck; theme: PluginTheme }) {
         <Icon name={failed ? "X" : "AlertTriangle"} size={13} color={color} />
       </View>
       <View style={{ flex: 1, gap: 2 }}>
-        <Text style={{ color: theme.colors.foreground, fontSize: 13, lineHeight: 18 }}>
+        <Text
+          style={{
+            color: muted ? theme.colors.foregroundMuted : theme.colors.foreground,
+            fontSize: 13,
+            lineHeight: 18,
+          }}
+        >
           {check.label}
         </Text>
         {check.reason ? (
@@ -82,12 +121,10 @@ function CheckLine({ check, theme }: { check: ShipCheck; theme: PluginTheme }) {
 function ShipButton({
   agentId,
   theme,
-  stretch,
   onError,
 }: {
   agentId: string;
   theme: PluginTheme;
-  stretch: boolean;
   onError: (message: string | null) => void;
 }) {
   const paseo = usePaseo();
@@ -158,7 +195,6 @@ function ShipButton({
       accessibilityLabel={`Run ${command} now`}
       {...(down ? { accessibilityHint: "Available once the agent finishes its turn." } : {})}
       disabled={down}
-      stretch={stretch}
       onPress={ship}
     />
   );
@@ -178,6 +214,25 @@ export function ShipCard({ row, agentId, theme, compact, footnote = null }: Ship
   const checks = [...row.blockers, ...row.warnings];
   const headline = statusColor(row, theme);
   const padding = compact ? 14 : 16;
+  const action = hasAction(row);
+  const stale = row.stale;
+  /**
+   * Where the button goes, which is the one thing the card's vertical spacing
+   * has to know.
+   *
+   * Wide, it sits in the head row beside the headline, and the row's own height
+   * is then the thing every measurement above and below is tuned against.
+   * Narrow, it drops under the branch and file lines, after the sentence it
+   * acts on rather than between that sentence's two halves, and stays its own
+   * width: a button stretched across the card claims a weight this one action
+   * does not need. That leaves the narrow head row a single line of text, which
+   * is the same shape a blocked card has, so both take the plain geometry.
+   */
+  const buttonInHead = action && !compact;
+  const buttonBelowMeta = action && compact;
+  // The head row is 34pt tall around a 20pt line whenever it holds a button, so
+  // part of the space under the headline is already paid for there.
+  const metaGap = buttonInHead ? 6 : 10;
 
   const styles = useMemo(
     () => ({
@@ -185,20 +240,24 @@ export function ShipCard({ row, agentId, theme, compact, footnote = null }: Ship
         borderRadius: 14,
         borderWidth: 1,
         borderColor: theme.colors.border,
-        backgroundColor: theme.colors.surface1,
+        // History keeps the outline and gives up the fill, so a stream of old
+        // verdicts reads as one live card and a column of quiet frames.
+        backgroundColor: stale ? "transparent" : theme.colors.surface1,
         paddingHorizontal: padding,
-        // The head row is as tall as the button in it, so an even top and bottom
-        // measure the same and read differently: the headline looks pushed down
-        // into the card. The top is trimmed until the headline sits where the
-        // eye puts it, level with the button's own label.
-        paddingTop: compact ? 11 : 12,
-        paddingBottom: compact ? 13 : 15,
+        // A head row with a button in it is as tall as that button, so an even
+        // top and bottom measure the same and read differently: the headline
+        // looks pushed down into the card. The top is trimmed until it sits
+        // where the eye puts it, level with the button's own label. A card with
+        // no button has no such row and no correction to make, and wearing this
+        // one anyway was what left the blocked card's headline floating.
+        paddingTop: buttonInHead ? 12 : compact ? 12 : 14,
+        paddingBottom: buttonInHead ? 15 : compact ? 12 : 14,
         overflow: "hidden" as const,
       },
       head: {
-        flexDirection: (compact ? "column" : "row") as "column" | "row",
-        alignItems: (compact ? "stretch" : "center") as "stretch" | "center",
-        gap: compact ? 12 : 14,
+        flexDirection: "row" as const,
+        alignItems: "center" as const,
+        gap: 14,
       },
       title: {
         flexDirection: "row" as const,
@@ -210,10 +269,10 @@ export function ShipCard({ row, agentId, theme, compact, footnote = null }: Ship
         // Matching the baselines takes about a pixel; this lifts further than
         // that, sitting the headline high in the row on purpose, which is what
         // reads as level against a filled button. Whole pixels only, so a 1x
-        // browser client does not render the row on a half pixel.
-        ...(compact
-          ? {}
-          : { flexGrow: 1, flexBasis: 0, transform: [{ translateY: -4 }] as const }),
+        // browser client does not render the row on a half pixel. No button, no
+        // lift: there is nothing to be level with.
+        ...(compact ? {} : { flexGrow: 1, flexBasis: 0 }),
+        ...(buttonInHead ? { transform: [{ translateY: -4 }] as const } : {}),
       },
       // An explicit line height is what makes the centring honest. Left to its
       // default, a `Text` box carries leading the eye does not see, and the
@@ -225,7 +284,11 @@ export function ShipCard({ row, agentId, theme, compact, footnote = null }: Ship
         fontWeight: "600" as const,
         flexShrink: 1,
       },
-      branch: { color: theme.colors.foreground, fontSize: 13, lineHeight: 18 },
+      branch: {
+        color: stale ? theme.colors.foregroundMuted : theme.colors.foreground,
+        fontSize: 13,
+        lineHeight: 18,
+      },
       detail: { color: theme.colors.foregroundMuted, fontSize: 12, lineHeight: 16 },
       rule: {
         height: 1,
@@ -241,6 +304,13 @@ export function ShipCard({ row, agentId, theme, compact, footnote = null }: Ship
         gap: 10,
       },
       footnote: { color: theme.colors.foregroundMuted, fontSize: 11 },
+      // Times in a stream of cards sit in the same corner card after card, and
+      // proportional digits make that column jitter as the minutes change.
+      time: {
+        color: theme.colors.foregroundMuted,
+        fontSize: 11,
+        fontVariant: ["tabular-nums" as const],
+      },
       failure: {
         color: theme.colors.statusDanger,
         fontSize: 12,
@@ -248,7 +318,22 @@ export function ShipCard({ row, agentId, theme, compact, footnote = null }: Ship
         marginTop: 12,
       },
     }),
-    [compact, padding, theme],
+    [buttonInHead, compact, padding, stale, theme],
+  );
+
+  const shipControl = !action ? null : stale ? (
+    <ActionButton
+      theme={theme}
+      tone="primary"
+      icon="Ship"
+      label="Ship"
+      accessibilityLabel="Ship"
+      accessibilityHint="This check is no longer current."
+      disabled
+      onPress={noop}
+    />
+  ) : (
+    <ShipButton agentId={agentId} theme={theme} onError={setFailure} />
   );
 
   return (
@@ -260,42 +345,26 @@ export function ShipCard({ row, agentId, theme, compact, footnote = null }: Ship
             {row.headline}
           </Text>
         </View>
-        {!row.ready ? null : row.stale ? (
-          <ActionButton
-            theme={theme}
-            tone="primary"
-            icon="Ship"
-            label="Ship"
-            accessibilityLabel="Ship"
-            accessibilityHint="This check is no longer current."
-            disabled
-            stretch={compact}
-            onPress={noop}
-          />
-        ) : (
-          <ShipButton agentId={agentId} theme={theme} stretch={compact} onError={setFailure} />
-        )}
+        {buttonInHead ? shipControl : null}
       </View>
 
-      {/*
-        On a wide card the head row is as tall as the button, so the headline
-        already has half that height under it. The gap closes to match what the
-        eye measures from the letters, and stays open when there is no button to
-        borrow height from.
-      */}
-      <View style={{ marginTop: !compact && row.ready ? 6 : 10, gap: 2 }}>
+      <View style={{ marginTop: metaGap, gap: 2 }}>
         <Text style={styles.branch} numberOfLines={1}>
           {row.branch}
         </Text>
         <Text style={styles.detail}>{row.detail}</Text>
       </View>
 
+      {buttonBelowMeta ? (
+        <View style={{ marginTop: 12, flexDirection: "row" }}>{shipControl}</View>
+      ) : null}
+
       {checks.length > 0 ? (
         <>
           <View style={styles.rule} />
           <View style={{ marginTop: 13, gap: 11 }}>
             {checks.map((check) => (
-              <CheckLine key={check.id} check={check} theme={theme} />
+              <CheckLine key={check.id} check={check} theme={theme} muted={stale} />
             ))}
           </View>
         </>
@@ -310,10 +379,10 @@ export function ShipCard({ row, agentId, theme, compact, footnote = null }: Ship
           <Text style={styles.footnote} numberOfLines={1}>
             {row.passed} check{row.passed === 1 ? "" : "s"} passed
             {footnote ? ` · ${footnote}` : ""}
-            {row.stale ? " · no longer current" : ""}
+            {stale ? " · no longer current" : ""}
           </Text>
         </View>
-        <Text style={styles.footnote}>{checkTime(row.checkedAt)}</Text>
+        <Text style={styles.time}>{checkTime(row.checkedAt)}</Text>
       </View>
     </View>
   );
