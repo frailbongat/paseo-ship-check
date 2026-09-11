@@ -23,10 +23,17 @@
  * conversation has collected, so the row id is minted from the hash and a hash
  * already on the timeline is left alone: an agent that ships five times gets
  * five cards, each once, rather than five more on every turn that follows.
+ *
+ * Where that card goes is the verdict card that offered the ship, when there is
+ * one. A press on `Ship` and the report it produces are one thing in two
+ * states, so the card changes state in place instead of leaving a retired
+ * `Ready to ship` above a fresh `Shipped`. A `/ship` typed with no card live
+ * has nothing to change, and only then is a row of its own appended.
  */
 
 import type { PluginHandlerContext } from "@getpaseo/plugin/server";
 import { takeHandedOffReport } from "./ship-handoff";
+import { attachShipResult, shippedShas } from "./timeline";
 import {
   SHIP_RESULT_KIND,
   SHIP_RESULT_VERSION,
@@ -103,7 +110,11 @@ export async function publishShipResult(
   if (!newest) return;
 
   const id = resultRowId(newest);
-  if (publishedResults(timeline).has(id)) return;
+  if (publishedResults(timeline).has(id) || shippedShas(timeline).has(newest.sha)) return;
+
+  // The card the reader pressed, turned into what the press did. Only a ship
+  // with no card behind it falls through to a row of its own.
+  if (await attachShipResult(paseo, agentId, timeline, newest)) return;
 
   try {
     await paseo.agents.ref(agentId).timeline.append({

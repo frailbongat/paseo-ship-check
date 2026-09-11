@@ -67,6 +67,7 @@ const SAMPLE_ROW: ShipRow = {
   ],
   passed: 4,
   stale: false,
+  shipped: null,
 };
 
 export function SettingsScreen({ theme }: PluginSurfaceProps) {

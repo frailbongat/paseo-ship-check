@@ -15,11 +15,11 @@
  * described has moved on, so shipping from it would ship something the reader
  * never checked.
  *
- * That card recedes whole. A timeline collects one of these per turn, so an old
- * verdict that keeps its fill, its foreground text, and its red check rows
- * competes with the live one at full volume and the stream reads as a wall of
- * cards. History drops to the background it sits on and goes monochrome, which
- * leaves exactly one card in the stream carrying surface and colour.
+ * That card recedes in colour and keeps its frame. A timeline collects one of
+ * these per turn, so an old verdict that keeps its red check rows competes with
+ * the live one at full volume. History goes monochrome instead, which leaves
+ * exactly one card in the stream carrying colour. The surface stays: a card
+ * with no fill reads as a hole in the stream rather than as a quiet card.
  *
  * Every length here is drawn through `card-type.ts`, which is the reader's font
  * and size setting. A size is one scale over the whole card rather than a font
@@ -262,9 +262,10 @@ export function ShipCard({ row, agentId, theme, compact, footnote = null }: Ship
         borderRadius: type.px(14),
         borderWidth: 1,
         borderColor: theme.colors.border,
-        // History keeps the outline and gives up the fill, so a stream of old
-        // verdicts reads as one live card and a column of quiet frames.
-        backgroundColor: stale ? "transparent" : theme.colors.surface1,
+        // Every card keeps its surface, history included. What history gives up
+        // is colour, which is enough to tell the two apart without punching a
+        // hole in the stream where an old card used to be.
+        backgroundColor: theme.colors.surface1,
         paddingHorizontal: padding,
         // A head row with a button in it is as tall as that button, so an even
         // top and bottom measure the same and read differently: the headline
