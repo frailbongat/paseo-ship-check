@@ -77,6 +77,13 @@ The card lays out for the window it is in. A wide one puts the ship button on th
 | Setting | Default | What it changes |
 | --- | --- | --- |
 | Ship command | `/ship` | The text the card's **Ship** button sends, in the timeline and in the panel. Also what the echo transformer hides. |
+| Font | System | The card's typeface: the client's own text, a serif, or a monospace. Each resolves on every platform Paseo runs on. |
+| Custom font family | empty | A font family of your own, which wins over **Font** while it is set. A name the client cannot resolve falls back to its own text. |
+| Text size | Default | Small, default, or large. |
+
+Text size is a scale over the whole card, not a font size for one line. The card's measurements are tuned against each other, so text, leading, padding, gaps, icons, and the ship button are all multiplied by the same number and a large card is the same card seen closer. `client/card-type.ts` holds the font stacks and the scales; the screen carries a blocked sample card under the controls, which is a real `ShipCard` reading the same store the timeline reads.
+
+The selects save as you pick. The two text fields save on their own **Save**, so a half-typed font family never reaches the card.
 
 The timeline transformer answers synchronously and runs outside React, where no hook can be called, so `client/settings-sync.ts` reads the document over the settings RPC into `client/settings-store.ts` and re-reads it every 60s. Saving in the screen writes the same store, so a change lands on the card already on screen.
 
@@ -92,6 +99,7 @@ The timeline transformer answers synchronously and runs outside React, where no 
 | `index.server.ts` | server | Registers the settings document, the RPC handlers and the turn-end hook |
 | `client/ship-card.tsx` | client | The verdict card and its ship button, shared by the timeline row and the panel |
 | `client/action-button.tsx` / `client/spinner.tsx` | client | Button chrome shared by the card and the panel, and the spinner a busy button draws |
+| `client/card-type.ts` | client | Turns the type settings into the font family and scale every length in the card is drawn at |
 | `client/ship-panel.tsx` / `client/ship-store.ts` | client | The **Ship check** tab, its re-check, and the per-agent verdict store |
 | `client/ship-actions.ts` | client | The forced re-check shared by the Command Center item and `/ship-check` |
 | `client/ship-row.tsx` | client | Timeline renderer that hands the daemon's row to the card |

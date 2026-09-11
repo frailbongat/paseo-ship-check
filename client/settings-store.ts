@@ -31,7 +31,12 @@ export function readSettings(): ShipSettings {
 }
 
 function same(a: ShipSettings, b: ShipSettings): boolean {
-  return a.shipCommand === b.shipCommand;
+  return (
+    a.shipCommand === b.shipCommand &&
+    a.cardFont === b.cardFont &&
+    a.cardFontFamily === b.cardFontFamily &&
+    a.cardTextSize === b.cardTextSize
+  );
 }
 
 /** Writing an unchanged document would wake every card and panel for nothing. */

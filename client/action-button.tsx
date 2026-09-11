@@ -31,6 +31,14 @@ export interface ActionButtonProps {
   disabled?: boolean;
   /** Fill the row, which is what the card wants once it stacks on a phone. */
   stretch?: boolean;
+  /**
+   * Scales every length in the button, so a card drawn large keeps its head row
+   * as tall as the button in it. 1 is the tuned size, which is what the panel's
+   * own buttons stay at: they are panel chrome, not part of the card.
+   */
+  scale?: number;
+  /** The card's font family, so the label is set like the card it sits in. */
+  fontFamily?: string | undefined;
   onPress: () => void;
 }
 
@@ -44,8 +52,11 @@ export function ActionButton({
   busy = false,
   disabled = false,
   stretch = false,
+  scale = 1,
+  fontFamily,
   onPress,
 }: ActionButtonProps) {
+  const px = (length: number) => Math.max(1, Math.round(length * scale));
   const inert = disabled || busy;
   // A busy primary button keeps the accent: the work is running, not refused.
   const filled = tone === "primary" && !(disabled && !busy);
@@ -70,11 +81,11 @@ export function ActionButton({
         flexDirection: "row",
         alignItems: "center",
         justifyContent: "center",
-        gap: 7,
-        minHeight: 34,
-        paddingHorizontal: 14,
-        paddingVertical: 8,
-        borderRadius: 10,
+        gap: px(7),
+        minHeight: px(34),
+        paddingHorizontal: px(14),
+        paddingVertical: px(8),
+        borderRadius: px(10),
         borderWidth: 1,
         borderColor: filled ? theme.colors.accent : theme.colors.border,
         backgroundColor: background,
@@ -83,11 +94,13 @@ export function ActionButton({
       })}
     >
       {busy ? (
-        <Spinner color={foreground} trackColor={background} size={14} />
+        <Spinner color={foreground} trackColor={background} size={px(14)} />
       ) : (
-        <Icon name={icon} size={14} color={foreground} />
+        <Icon name={icon} size={px(14)} color={foreground} />
       )}
-      <Text style={{ color: foreground, fontSize: 13, fontWeight: "600" }}>{label}</Text>
+      <Text style={{ color: foreground, fontSize: px(13), fontWeight: "600", fontFamily }}>
+        {label}
+      </Text>
     </Pressable>
   );
 }
