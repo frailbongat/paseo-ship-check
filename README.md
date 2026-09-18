@@ -2,11 +2,19 @@
 
 A ship-readiness card in the Paseo agent timeline, with the ship itself on it.
 
-When a turn ends, the daemon checks the tree the way the [ship extension](https://github.com/frailbongat/dotfiles/tree/main/pi/agent/extensions/ship) would and appends a card to that agent's timeline: the headline, the branch line, every blocker and warning, and a **Ship** button when the branch is ready. The button appears only for a ready branch and only while the agent is idle.
+When a turn ends, the daemon checks the tree the way the [ship extension](https://github.com/frailbongat/dotfiles/tree/main/pi/agent/extensions/ship) would and appends a card to that agent's timeline: the headline, the branch line, every blocker and warning, and a **Ship** button when the branch is ready. The button appears only for a ready branch and only while the agent is idle. Beside it sits **Ship, keep open**, which ships the same commit and leaves the ticket open.
 
-Pressing it sends the command and puts the button down: no spinner, no second press, and no label that changes. The turn it starts is an ordinary turn, and Paseo's stream footer already reports a running turn, so the card would only be saying the same thing twice. The button comes back when that turn ends, or after five seconds if the command never started one. A failed send reports the reason on the card instead of sending anything.
+Pressing either one sends the command and puts both down: no spinner, no second press, and no label that changes. The turn it starts is an ordinary turn, and Paseo's stream footer already reports a running turn, so the card would only be saying the same thing twice. The button comes back when that turn ends, or after five seconds if the command never started one. A failed send reports the reason on the card instead of sending anything.
 
-The **Ship check** panel draws the same card, so the button is in both places and behaves the same way. The panel adds **Re-check**, which is the only thing that pays for a fresh run.
+### Two endings, two buttons
+
+The ship carries one decision the card cannot make for you: whether this commit closes the ticket. `/ship` writes `(closes #42)` on the commit subject and the ticket shuts when the trunk takes it. `/ship refs` writes `(refs #42)` instead, which links the work and leaves the ticket open, for the commit that moves a ticket forward without finishing it.
+
+That is a choice per commit rather than a preference, so it is a second button rather than a setting. **Ship** is filled and **Ship, keep open** is quiet, because closing is the common ending. The quiet one sends the **Ship command** setting with `refs` appended, so a command configured to anything else still gets the same word added. A command that already carries `refs` would make the two buttons send the same text, so the card then shows one.
+
+The card never knows whether the session has an issue in it at all, because that is pi's own state. `refs` with no issue to reference changes nothing, so a repository with no tracker can turn the second button off in settings.
+
+The **Ship check** panel draws the same card, so the buttons are in both places and behave the same way. The panel adds **Re-check**, which is the only thing that pays for a fresh run.
 
 This started as a third pill in [`paseo-composer-pills`](https://github.com/frailbongat/paseo-composer-pills) and left it because a verdict is a list of blockers rather than a number: it never fitted in a pill, and its action belongs next to the reasons it is offered. That plugin still owns the Claude limit and context pills, and the two plugins share nothing at runtime.
 
@@ -25,7 +33,7 @@ paseo plugin ls   # expect: running
 
 ### The ship button needs the ship extension
 
-Computing the verdict needs nothing but `git` plus whatever quality tools the repo already declares. **Acting** on it does: the button sends the literal text `/ship`, so the agent must be a pi session with the ship extension installed at `~/.pi/agent/extensions/ship`.
+Computing the verdict needs nothing but `git` plus whatever quality tools the repo already declares. **Acting** on it does: the buttons send the literal text `/ship` and `/ship refs`, so the agent must be a pi session with the ship extension installed at `~/.pi/agent/extensions/ship`.
 
 ```bash
 ls ~/.pi/agent/extensions/ship   # if this is empty, one-tap ship does nothing
@@ -37,7 +45,7 @@ Without it the card still reads correctly and the panel still reports. Only the 
 
 Paseo submits a provider slash command as ordinary message text, so the card's **Ship** button and a hand-typed `/ship` both leave a user row reading `/ship`. pi never treats it as conversation: the ship extension registers `ship` as a command, runs it, and the turn carries the ship's own output. A timeline transformer in `client/ship-echo.ts` drops that row, so the timeline shows what ship did instead of the keystroke that started it.
 
-It matches on the first word, so `/ship main` and `/ship verbose` go too, and it follows the **Ship command** setting. A message with a line break is prose and stays. Only the echo is removed: ship's notices and the verdict card still show.
+It matches on the first word, so `/ship main`, `/ship verbose`, and the keep-open button's own `/ship refs` go too, and it follows the **Ship command** setting. A message with a line break is prose and stays. Only the echo is removed: ship's notices and the verdict card still show.
 
 ### The result stays pi's notice
 
@@ -72,7 +80,7 @@ Undecidable checks, such as a linter running past 30s, count as blockers, never 
 
 Each turn with something to ship gets its own card, so the card is always in the turn you are reading. That is a deliberate cost. Paseo replaces a re-appended row where it already sits rather than moving it down, so reusing one id per agent parks the card at the turn it first appeared in and updates it there, out of sight.
 
-Every turn end retires the cards before it: each one is re-appended as stale, keeping its verdict and its button as that turn's history while going grey, with the button disabled and the footer reading `no longer current`. At most one card can ship, which is the point, because the tree the older ones described has moved on. The cards to retire are read out of the turn-end event's own timeline snapshot, not out of anything the plugin remembers, so a card left by an earlier load of the plugin is retired too instead of keeping a live button forever.
+Every turn end retires the cards before it: each one is re-appended as stale, keeping its verdict and its buttons as that turn's history while going grey, with the buttons disabled and the footer reading `no longer current`. At most one card can ship, which is the point, because the tree the older ones described has moved on. The cards to retire are read out of the turn-end event's own timeline snapshot, not out of anything the plugin remembers, so a card left by an earlier load of the plugin is retired too instead of keeping a live button forever.
 
 A turn that ends with a clean tree retires the same way and publishes nothing, so a quiet turn stays quiet. A re-check is different: `/ship-check`, the Command Center item, and the panel's **Re-check** all reuse the current turn's id, so they correct the card on screen, blockers cleared and all, instead of stacking another. The first card waits until there is something to ship.
 
@@ -84,7 +92,7 @@ Nothing announces the rebuild. `agent.timeline.replacement` is minted by rewind 
 
 What the ship itself did is not this plugin's to restore: the report is pi's own notice, and a rebuild re-streams it with the rest of the provider's history.
 
-The card lays out for the window it is in. A wide one puts the ship button on the headline row; a compact one stacks it full width under the headline. Blockers and warnings sit below a full-bleed rule, the passed count and the check time below a second one.
+The card lays out for the window it is in. A wide one puts the ship buttons on the headline row; a compact one drops them under the branch and file lines, where they wrap onto a second line rather than squeeze a label. **Ship** takes the card's outer edge in both, which is the right margin when the pair is right-aligned and the left one when it is not. Blockers and warnings sit below a full-bleed rule, the passed count and the check time below a second one.
 
 ## Settings
 
@@ -93,6 +101,7 @@ The card lays out for the window it is in. A wide one puts the ship button on th
 | Setting | Default | What it changes |
 | --- | --- | --- |
 | Ship command | `/ship` | The text the card's **Ship** button sends, in the timeline and in the panel. Also what the echo transformer hides. |
+| Keep-open button | On | Whether a ready card offers **Ship, keep open** beside **Ship**. |
 | Font | System | The card's typeface: the client's own text, a serif, or a monospace. Each resolves on every platform Paseo runs on. |
 | Custom font family | empty | A font family of your own, which wins over **Font** while it is set. A name the client cannot resolve falls back to its own text. |
 | Text size | Default | Small, default, or large. |
@@ -113,7 +122,7 @@ The timeline transformer answers synchronously and runs outside React, where no 
 | --- | --- | --- |
 | `index.client.tsx` | client | Registers the settings screen, the panel, the Command Center items, the `/ship-check` slash command, the timeline transformer and renderer |
 | `index.server.ts` | server | Registers the settings document, the RPC handlers, the turn-end hook that publishes the verdict card, and the session-open hook that restores it |
-| `client/ship-card.tsx` | client | The verdict card and its ship button, shared by the timeline row and the panel |
+| `client/ship-card.tsx` | client | The verdict card and its two ship buttons, shared by the timeline row and the panel |
 | `client/action-button.tsx` / `client/spinner.tsx` | client | Button chrome shared by the card and the panel, and the spinner a busy button draws |
 | `client/card-type.ts` | client | Turns the type settings into the font family and scale every length in the card is drawn at |
 | `client/ship-panel.tsx` / `client/ship-store.ts` | client | The **Ship check** tab, its re-check, and the per-agent verdict store |

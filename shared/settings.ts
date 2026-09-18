@@ -21,6 +21,59 @@ import { z } from "zod";
 export const DEFAULT_SHIP_COMMAND = "/ship";
 
 /**
+ * The word the second button adds to that command.
+ *
+ * `/ship` writes `(closes #42)` on the commit subject and the ticket shuts when
+ * the trunk takes it. `/ship refs` writes `(refs #42)` instead, which links the
+ * work and leaves the ticket open, for the commit that moves a ticket forward
+ * without finishing it. The ship extension parses its arguments in any order,
+ * so appending the word is enough however the command is otherwise configured.
+ */
+export const KEEP_OPEN_ARGUMENT = "refs";
+
+/**
+ * Every spelling the ship extension accepts for that word, mirrored from its
+ * own `KEEP_OPEN_WORDS`.
+ *
+ * It is here so the card can tell whether the configured command already keeps
+ * the issue open. A reader who set the command to `/ship refs` wanted that as
+ * the default, and the two buttons would then send the same thing under
+ * different labels, so the second one is dropped instead.
+ */
+const KEEP_OPEN_WORDS = new Set([
+  "refs",
+  "ref",
+  "--refs",
+  "open",
+  "keep-open",
+  "keepopen",
+  "no-close",
+  "noclose",
+  "wip",
+]);
+
+/**
+ * Whether the configured command already asks for the issue to stay open.
+ *
+ * The first word is the command's own name and never counts, so a command
+ * called `/open` is not read as a request to keep anything open.
+ */
+export function commandKeepsIssueOpen(shipCommand: string): boolean {
+  return shipCommand
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .slice(1)
+    .some((word) => KEEP_OPEN_WORDS.has(word));
+}
+
+/** The configured command, with the keep-open word added if it is missing. */
+export function keepOpenCommand(shipCommand: string): string {
+  const base = shipCommand.trim();
+  return commandKeepsIssueOpen(base) ? base : `${base} ${KEEP_OPEN_ARGUMENT}`;
+}
+
+/**
  * The card's typeface, as a choice rather than a font name.
  *
  * Each one resolves on every client Paseo runs on, which a font name typed by
@@ -52,6 +105,14 @@ export const shipSettings = defineSettings({
      */
     cardFontFamily: z.string().trim().max(120).default(""),
     cardTextSize: z.enum(CARD_TEXT_SIZES).default(DEFAULT_CARD_TEXT_SIZE),
+    /**
+     * Whether a ready card offers the keep-open ship beside the plain one.
+     * On by default, because a commit that only advances a ticket is common
+     * enough to want one tap. A repository with no issue tracker never needs
+     * it: `refs` with no issue in the session changes nothing, so the button
+     * is a promise about something that is not there, and this turns it off.
+     */
+    keepOpenButton: z.boolean().default(true),
   }),
 });
 
@@ -59,3 +120,13 @@ export type ShipSettings = z.output<typeof shipSettings.schema>;
 
 /** Parsing `{}` produces the complete document, so this is the whole default. */
 export const DEFAULT_SHIP_SETTINGS: ShipSettings = shipSettings.schema.parse({});
+
+/**
+ * Whether a ready card draws the keep-open ship at all.
+ *
+ * One answer, read by the live buttons and by the disabled twins a stale card
+ * draws, so history cannot end up showing a button the live card never had.
+ */
+export function showsKeepOpen(settings: ShipSettings): boolean {
+  return settings.keepOpenButton && !commandKeepsIssueOpen(settings.shipCommand);
+}

@@ -17,9 +17,7 @@
  * half pixel and blurs it.
  */
 
-import { useMemo } from "react";
 import { Platform } from "react-native";
-import { useShipSettings } from "./settings-store";
 import type { CardFont, CardTextSize, ShipSettings } from "../shared/settings";
 
 /**
@@ -104,9 +102,4 @@ export function cardType(settings: ShipSettings): CardType {
     // A 1pt hairline stays a hairline: it is a rule, not a measurement.
     px: (length) => (length <= 1 ? length : Math.max(1, Math.round(length * scale))),
   };
-}
-
-export function useCardType(): CardType {
-  const settings = useShipSettings();
-  return useMemo(() => cardType(settings), [settings]);
 }

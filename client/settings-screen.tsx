@@ -21,13 +21,16 @@ import {
   SettingsInput,
   SettingsSection,
   SettingsSelect,
+  SettingsSwitch,
 } from "@getpaseo/plugin/client/ui";
 import { useEffect, useState } from "react";
 import { Text, View } from "react-native";
 import { writeSettings } from "./settings-store";
 import { ShipCard } from "./ship-card";
 import {
+  commandKeepsIssueOpen,
   DEFAULT_SHIP_COMMAND,
+  keepOpenCommand,
   shipSettings,
   type CardFont,
   type CardTextSize,
@@ -98,6 +101,15 @@ export function SettingsScreen({ theme }: PluginSurfaceProps) {
 
   const muted = { color: theme.colors.foregroundMuted, fontSize: 13, lineHeight: 18 };
 
+  // A command that already keeps the issue open leaves the second button with
+  // nothing of its own to send, so the card drops it whatever this switch says.
+  // The row explains that rather than sitting on a promise the card breaks.
+  const savedCommand = saved?.shipCommand ?? DEFAULT_SHIP_COMMAND;
+  const keepOpenRedundant = commandKeepsIssueOpen(savedCommand);
+  const keepOpenHint = keepOpenRedundant
+    ? `${savedCommand} already keeps the issue open, so a ready card shows one button.`
+    : `A second button on a ready card that sends ${keepOpenCommand(savedCommand)}, referencing the issue instead of closing it.`;
+
   if (settings.status !== "ready") {
     return (
       <View style={{ gap: 12, paddingVertical: 12 }}>
@@ -154,6 +166,13 @@ export function SettingsScreen({ theme }: PluginSurfaceProps) {
             onPress={() => {
               void commit({ shipCommand: trimmedCommand }).then(() => setCommandDraft(null));
             }}
+          />
+          <SettingsSwitch
+            label="Keep-open button"
+            hint={keepOpenHint}
+            value={settings.values.keepOpenButton}
+            disabled={settings.saving || keepOpenRedundant}
+            onValueChange={(keepOpenButton) => void commit({ keepOpenButton })}
           />
         </SettingsCard>
       </SettingsSection>

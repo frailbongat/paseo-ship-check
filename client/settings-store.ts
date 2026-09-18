@@ -35,7 +35,8 @@ function same(a: ShipSettings, b: ShipSettings): boolean {
     a.shipCommand === b.shipCommand &&
     a.cardFont === b.cardFont &&
     a.cardFontFamily === b.cardFontFamily &&
-    a.cardTextSize === b.cardTextSize
+    a.cardTextSize === b.cardTextSize &&
+    a.keepOpenButton === b.keepOpenButton
   );
 }
 

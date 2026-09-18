@@ -28,7 +28,9 @@ export const SHIP_ECHO_TRANSFORMER_ID = "ship-echo";
 
 /**
  * The configured command can carry arguments (`/ship main`), and so can the
- * typed invocation, so both sides match on their first word.
+ * typed invocation, so both sides match on their first word. That is also what
+ * covers the card's keep-open button: it sends the configured command with
+ * `refs` appended, which is the same first word and so the same echo.
  *
  * A message with a line break is prose that happens to open with the command,
  * never an invocation: pi reads a command off a single line.

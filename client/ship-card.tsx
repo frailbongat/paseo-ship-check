@@ -30,9 +30,17 @@
  * `card-type.ts` and no more. A title is a title at one size wherever it is
  * drawn.
  *
- * The button carries no ship icon. The card already wears one, in the title,
- * where it is drawn whatever the verdict says; the button is the only slot that
- * cannot promise that, since a blocked verdict has no button. See `ShipButton`.
+ * The buttons carry no ship icon. The card already wears one, in the title,
+ * where it is drawn whatever the verdict says; the buttons are the only slot
+ * that cannot promise that, since a blocked verdict has none. See
+ * `ShipActions`.
+ *
+ * A ready card offers the ship twice, because the ship has one decision in it
+ * that the card cannot make: whether this commit closes the ticket. `/ship`
+ * writes `(closes #42)` and shuts it; `/ship refs` writes `(refs #42)` and
+ * leaves it open. That is a per-commit choice, not a preference, so it is a
+ * second button rather than a setting, and it is quiet rather than filled
+ * because closing is the common ending.
  *
  * The button draws no progress of its own. The command it sends starts an
  * ordinary turn, and Paseo already reports a running turn in the stream footer,
@@ -47,8 +55,9 @@ import { Icon } from "@getpaseo/plugin/client/react-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Text, View } from "react-native";
 import { ActionButton } from "./action-button";
-import { BODY, META, TITLE, useCardType, type CardType } from "./card-type";
+import { BODY, cardType, META, TITLE, type CardType } from "./card-type";
 import { useShipSettings } from "./settings-store";
+import { keepOpenCommand, showsKeepOpen } from "../shared/settings";
 import type { ShipCheck } from "../shared/ship";
 import type { ShipRow } from "../shared/timeline";
 
@@ -138,16 +147,91 @@ function CheckLine({
   );
 }
 
+/** The label the keep-open button wears wherever it is drawn. */
+const KEEP_OPEN_LABEL = "Ship, keep open";
+
 /**
- * The ship, and nothing else: it sends the command or it says why it could not.
- * It is a label and no glyph: the ship mark belongs to the title, which is the
- * one slot every variant has, and a card that draws it twice spends its only
- * accent twice.
- * The card only renders it for a ready verdict, so what is left to guard is a
- * second press while the first is on the wire and an agent that started running
- * since the card was drawn.
+ * The row the pair sits in.
+ *
+ * The buttons are always written primary first, and the wide card reverses the
+ * row instead of reordering them, so **Ship** owns the card's outer edge in
+ * both layouts: the right margin where the pair is pushed right by the
+ * headline, the left one where it is stacked under the branch lines. A fixed
+ * order would leave the filled button floating mid-row on a wide card.
+ *
+ * A narrow card wraps rather than shrinks: two labels squeezed onto one line
+ * would clip the longer one, and the reader cannot tell the buttons apart
+ * without it. Wrapping puts the keep-open ship on its own line at full label
+ * width instead.
  */
-function ShipButton({
+function controlRowStyle(type: CardType, compact: boolean) {
+  return {
+    flexDirection: compact ? ("row" as const) : ("row-reverse" as const),
+    alignItems: "center" as const,
+    gap: type.px(8),
+    ...(compact ? { flexWrap: "wrap" as const, marginTop: type.px(12) } : {}),
+  };
+}
+
+/**
+ * The pair a card whose turn has passed draws: the same two buttons, greyed
+ * out, and not one hook between them.
+ *
+ * A timeline holds one card per turn, and a stale card that subscribed to the
+ * agent's status the way the live buttons do would leave a scrolled-back
+ * conversation holding a subscription per card for buttons that can never be
+ * pressed.
+ */
+function RetiredShipButtons({
+  theme,
+  type,
+  keepOpen,
+}: {
+  theme: PluginTheme;
+  type: CardType;
+  keepOpen: boolean;
+}) {
+  const shared = {
+    theme,
+    scale: type.scale,
+    fontFamily: type.fontFamily,
+    accessibilityHint: "This check is no longer current.",
+    disabled: true,
+    onPress: noop,
+  } as const;
+
+  return (
+    <>
+      <ActionButton {...shared} tone="primary" label="Ship" accessibilityLabel="Ship" />
+      {keepOpen ? (
+        <ActionButton
+          {...shared}
+          tone="quiet"
+          label={KEEP_OPEN_LABEL}
+          accessibilityLabel={KEEP_OPEN_LABEL}
+        />
+      ) : null}
+    </>
+  );
+}
+
+/**
+ * The ship, and the one variant of it the card cannot decide for the reader:
+ * it sends a command or it says why it could not.
+ *
+ * Both are labels and no glyph: the ship mark belongs to the title, which is
+ * the one slot every variant has, and a card that draws it twice spends its
+ * only accent twice.
+ *
+ * One latch covers both, because they are two endings for one ship rather than
+ * two actions. Pressing either puts both down, so a second thought landing on
+ * the other button cannot send a second command behind the first.
+ *
+ * The card only renders these for a ready verdict, so what is left to guard is
+ * a second press while the first is on the wire and an agent that started
+ * running since the card was drawn.
+ */
+function ShipActions({
   agentId,
   theme,
   type,
@@ -159,10 +243,19 @@ function ShipButton({
   onError: (message: string | null) => void;
 }) {
   const paseo = usePaseo();
-  const command = useShipSettings().shipCommand;
+  const settings = useShipSettings();
+  const command = settings.shipCommand;
   const status = useAgent(agentId, (agent) => agent.status);
   const [sent, setSent] = useState(false);
-  /** Whether the turn this button started has actually begun. */
+  /**
+   * The same latch as `sent`, held where a press can read it without waiting
+   * for a render. Two buttons make a two-finger press a real gesture, and both
+   * handlers in that batch see the `sent` their render captured, which is still
+   * `false` for the second one. This one is already `true`, so the second press
+   * cannot queue `/ship refs` behind `/ship`.
+   */
+  const sending = useRef(false);
+  /** Whether the turn these buttons started has actually begun. */
   const turnBegan = useRef(false);
 
   /**
@@ -175,6 +268,7 @@ function ShipButton({
   useEffect(() => {
     if (!sent) {
       turnBegan.current = false;
+      sending.current = false;
       return;
     }
     if (status === "running") {
@@ -195,40 +289,67 @@ function ShipButton({
   // to refuse the press; the send reports its own failure.
   const agentBusy = status !== null && status !== "idle";
 
-  const ship = useCallback(() => {
-    if (sent) return;
-    // Set before the first await, so a second press in the same frame sees it.
-    setSent(true);
-    onError(null);
+  const ship = useCallback(
+    (text: string) => {
+      if (sending.current) return;
+      // Set before the first await, so a second press in the same batch sees it.
+      sending.current = true;
+      setSent(true);
+      onError(null);
 
-    void (async () => {
-      try {
-        // Paseo submits a provider slash command as ordinary message text, so
-        // this is exactly what typing the command into the composer does.
-        await paseo.agents.ref(agentId).send(command);
-      } catch (error) {
-        console.error("[paseo-ship-check] ship command failed to send", error);
-        const reason = error instanceof Error ? error.message : String(error);
-        setSent(false);
-        onError(`Could not send ${command}: ${reason}`);
-      }
-    })();
-  }, [agentId, command, onError, paseo, sent]);
+      void (async () => {
+        try {
+          // Paseo submits a provider slash command as ordinary message text, so
+          // this is exactly what typing the command into the composer does.
+          await paseo.agents.ref(agentId).send(text);
+        } catch (error) {
+          console.error("[paseo-ship-check] ship command failed to send", error);
+          const reason = error instanceof Error ? error.message : String(error);
+          sending.current = false;
+          setSent(false);
+          onError(`Could not send ${text}: ${reason}`);
+        }
+      })();
+    },
+    [agentId, onError, paseo],
+  );
 
   const down = sent || agentBusy;
+  const busyHint = down
+    ? { accessibilityHint: "Available once the agent finishes its turn." }
+    : null;
+  const keepOpenText = keepOpenCommand(command);
 
   return (
-    <ActionButton
-      theme={theme}
-      tone="primary"
-      label="Ship"
-      scale={type.scale}
-      fontFamily={type.fontFamily}
-      accessibilityLabel={`Run ${command} now`}
-      {...(down ? { accessibilityHint: "Available once the agent finishes its turn." } : {})}
-      disabled={down}
-      onPress={ship}
-    />
+    <>
+      <ActionButton
+        theme={theme}
+        tone="primary"
+        label="Ship"
+        scale={type.scale}
+        fontFamily={type.fontFamily}
+        accessibilityLabel={`Run ${command} now`}
+        {...(busyHint ?? {})}
+        disabled={down}
+        onPress={() => ship(command)}
+      />
+      {showsKeepOpen(settings) ? (
+        <ActionButton
+          theme={theme}
+          tone="quiet"
+          label={KEEP_OPEN_LABEL}
+          scale={type.scale}
+          fontFamily={type.fontFamily}
+          accessibilityLabel={`Run ${keepOpenText} now`}
+          accessibilityHint={
+            busyHint?.accessibilityHint ??
+            "Ships the same commit, referencing the issue instead of closing it."
+          }
+          disabled={down}
+          onPress={() => ship(keepOpenText)}
+        />
+      ) : null}
+    </>
   );
 }
 
@@ -244,7 +365,10 @@ export interface ShipCardProps {
 export function ShipCard({ row, agentId, theme, compact, footnote = null }: ShipCardProps) {
   const [failure, setFailure] = useState<string | null>(null);
   // The font and the scale the reader asked for, applied to every length below.
-  const type = useCardType();
+  // One read of the document covers both that and whether the keep-open ship is
+  // on, so a card holds one subscription rather than one per question.
+  const settings = useShipSettings();
+  const type = useMemo(() => cardType(settings), [settings]);
   const checks = [...row.blockers, ...row.warnings];
   const headline = statusColor(row, theme);
   const padding = type.px(compact ? 14 : 16);
@@ -388,20 +512,14 @@ export function ShipCard({ row, agentId, theme, compact, footnote = null }: Ship
     [buttonInHead, compact, padding, stale, theme, type],
   );
 
-  const shipControl = !action ? null : stale ? (
-    <ActionButton
-      theme={theme}
-      tone="primary"
-      label="Ship"
-      scale={type.scale}
-      fontFamily={type.fontFamily}
-      accessibilityLabel="Ship"
-      accessibilityHint="This check is no longer current."
-      disabled
-      onPress={noop}
-    />
-  ) : (
-    <ShipButton agentId={agentId} theme={theme} type={type} onError={setFailure} />
+  const shipControl = !action ? null : (
+    <View style={controlRowStyle(type, compact)}>
+      {stale ? (
+        <RetiredShipButtons theme={theme} type={type} keepOpen={showsKeepOpen(settings)} />
+      ) : (
+        <ShipActions agentId={agentId} theme={theme} type={type} onError={setFailure} />
+      )}
+    </View>
   );
 
   return (
@@ -416,8 +534,21 @@ export function ShipCard({ row, agentId, theme, compact, footnote = null }: Ship
               cause. A card that has to say `fatal: not a git repository` is
               already the card the reader stops at, so it is allowed the height.
               No button sits beside it either: an error verdict is never ready,
-              so the head row's optical lift is not in play. */}
-          <Text style={[styles.headline, { color: headline }]}>{row.headline}</Text>
+              so the head row's optical lift is not in play.
+
+              A head row that does hold the buttons is the one place that height
+              cannot be given away: the row's padding and the headline's lift
+              are both tuned around a single 23pt line beside a 34pt button, and
+              the pair narrows the headline's share of the row enough to reach a
+              second line on a middling window. That row is always a ready
+              verdict, which is two or three words, so it is clamped there and
+              nowhere else. */}
+          <Text
+            style={[styles.headline, { color: headline }]}
+            {...(buttonInHead ? { numberOfLines: 1 } : {})}
+          >
+            {row.headline}
+          </Text>
         </View>
         {buttonInHead ? shipControl : null}
       </View>
@@ -429,9 +560,7 @@ export function ShipCard({ row, agentId, theme, compact, footnote = null }: Ship
         <Text style={styles.detail}>{row.detail}</Text>
       </View>
 
-      {buttonBelowMeta ? (
-        <View style={{ marginTop: type.px(12), flexDirection: "row" }}>{shipControl}</View>
-      ) : null}
+      {buttonBelowMeta ? shipControl : null}
 
       {checks.length > 0 ? (
         <>
