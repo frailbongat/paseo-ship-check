@@ -12,6 +12,12 @@
  * - It never writes. `/ship` lets a formatter rewrite and restage a file, so a
  *   style complaint on a rewritable file is not a blocker here either. Only a
  *   formatter that cannot parse the file, or a lint finding, blocks.
+ *
+ * A ship has two shapes and this reports both. The usual one is work in the
+ * tree. The other is a clean tree with commits the destination has not got,
+ * which is what an agent that commits as it goes leaves behind; those commits
+ * are then the payload, they are checked as committed files nothing may
+ * rewrite, and `/ship` pushes them without writing a commit of its own.
  */
 
 import { execFile } from "node:child_process";
@@ -283,16 +289,22 @@ export function clearQualityCache(): void {
 /**
  * Mirrors `runStagedChecks`, read-only.
  *
- * `heldBack` is the set `/ship` refuses to rewrite because it carries unstaged
- * edits alongside staged ones. For those, a formatter complaint is a hard
- * failure in the extension, so it is a blocker here. For everything else the
- * extension rewrites and restages, so only a crash, exit 2 or worse, blocks.
+ * `heldBack` is the set `/ship` refuses to rewrite: a file carrying unstaged
+ * edits alongside staged ones, or, on a commits-only ship, every file, since a
+ * formatter's edits would land in the working tree rather than in the commits
+ * being pushed. For those, a formatter complaint is a hard failure in the
+ * extension, so it is a blocker here. For everything else the extension
+ * rewrites and restages, so only a crash, exit 2 or worse, blocks.
+ *
+ * `heldBackHint` says which of the two it was, because the reader's next move
+ * differs: stage the rest of the file, or format and commit again.
  */
 async function runQualityChecks(
   repoRoot: string,
   gitDir: string | undefined,
   files: readonly string[],
   heldBack: ReadonlySet<string>,
+  heldBackHint: string,
 ): Promise<ShipCheck[]> {
   if (hasPreCommitHook(repoRoot, gitDir)) {
     return [skip("quality", "Quality checks", "a pre-commit hook runs them at commit time")];
@@ -337,7 +349,7 @@ async function runQualityChecks(
         ? result.code !== 0 || result.stdout.trim().length > 0
         : result.code !== 0;
       if (failed) {
-        const hint = spec.writeArgs ? " (unstaged edits, /ship will not rewrite it)" : "";
+        const hint = spec.writeArgs ? ` (${heldBackHint})` : "";
         checks.push(fail(id, spec.label, `${firstLine(result)}${hint}`));
         continue;
       }
@@ -436,6 +448,21 @@ async function resolveDestination(
 // The verdict
 // ---------------------------------------------------------------------------
 
+/**
+ * Every path the unpushed commits added or modified, deduplicated.
+ *
+ * Read per commit rather than as one endpoint diff, because a secret added in
+ * the first commit and deleted in the last is invisible to the endpoints and is
+ * still on its way to the remote. Mirrors the extension's `listCommittedPaths`.
+ */
+async function listCommittedPaths(git: Git, range: readonly string[]): Promise<string[]> {
+  const result = await git(["log", "--format=", "--name-only", "-z", "--diff-filter=AM", ...range]);
+  if (result.code !== 0) return [];
+  // `--format=` still separates commits with a newline, so both separators are
+  // in play even under `-z`.
+  return [...new Set(result.stdout.split(/[\0\n]/).filter(Boolean))];
+}
+
 function emptyVerdict(cwd: string, isRepo: boolean, error: string | null): ShipVerdict {
   return {
     kind: SHIP_VERDICT_KIND,
@@ -450,6 +477,7 @@ function emptyVerdict(cwd: string, isRepo: boolean, error: string | null): ShipV
     ahead: 0,
     behind: 0,
     changedFiles: 0,
+    unpushedCommits: 0,
     checks: [],
     qualityFromCache: false,
     error,
@@ -538,8 +566,37 @@ async function computeVerdict(cwd: string, force: boolean): Promise<ShipVerdict>
       : fail("push-url", "origin has a push URL", "remote origin has no push URL"),
   );
 
-  // 5. What would be staged. Staged paths win when there are any, exactly as
-  //    /ship does; otherwise it stages everything and ships that.
+  // 5. Ahead and behind, read from the refs already on disk. No fetch.
+  //    This runs before the change set, because whether the commits on HEAD are
+  //    the payload or passengers is what the change set is read against.
+  const base = destination ? `origin/${destination.ref}` : null;
+  const baseExists = destination ? await remoteRefExists(git, destination.ref) : false;
+  let ahead = 0;
+  let behind = 0;
+  let unpushedCommits = 0;
+  /** The `git log` range those commits came from, reused to list their files. */
+  let unpushedRange: readonly string[] = [];
+
+  if (destination && baseExists) {
+    unpushedRange = [`${base}..HEAD`];
+    const counts = await git(["rev-list", "--left-right", "--count", `${base}...HEAD`]);
+    if (counts.code === 0) {
+      const [left, right] = counts.stdout.trim().split(/\s+/);
+      behind = Number.parseInt(left ?? "0", 10) || 0;
+      ahead = Number.parseInt(right ?? "0", 10) || 0;
+    }
+    unpushedCommits = ahead;
+  } else if (destination) {
+    // A destination that is not on origin yet has no counterpart to subtract,
+    // so the question becomes which commits no origin ref holds at all.
+    unpushedRange = ["HEAD", "--not", "--remotes=origin"];
+    const counts = await git(["rev-list", "--count", ...unpushedRange]);
+    if (counts.code === 0) unpushedCommits = Number.parseInt(counts.stdout.trim(), 10) || 0;
+  }
+
+  // 6. What would be sent. Staged paths win when there are any, exactly as
+  //    /ship does; then the unstaged tree, which it stages itself; and when
+  //    both are empty, the commits already on the branch are the ship.
   const staged = await git(["diff", "--cached", "--name-only", "-z", "--diff-filter=ACDMRTUXB"]);
   const stagedPaths = parseNullSeparated(staged.stdout);
   let candidatePaths = stagedPaths;
@@ -560,24 +617,28 @@ async function computeVerdict(cwd: string, force: boolean): Promise<ShipVerdict>
     heldBack = new Set(parseNullSeparated(unstaged.stdout));
   }
 
-  const sensitive = candidatePaths.filter(isSensitivePath);
+  const committedOnly = candidatePaths.length === 0 && unpushedCommits > 0;
+  /** The files judged, which on a commits-only ship is not the change set. */
+  let inspectedPaths = candidatePaths;
+  if (committedOnly) {
+    inspectedPaths = await listCommittedPaths(git, unpushedRange);
+    // Nothing already committed can be rewritten and restaged, so a formatter
+    // finding on any of these is a blocker in the extension too.
+    heldBack = new Set(inspectedPaths);
+  }
+
+  const sensitive = inspectedPaths.filter(isSensitivePath);
   checks.push(
     sensitive.length > 0
-      ? fail("sensitive", "No sensitive paths", `refuses to commit ${sensitive.slice(0, 2).join(", ")}`)
+      ? fail(
+          "sensitive",
+          "No sensitive paths",
+          `refuses to ${committedOnly ? "push" : "commit"} ${sensitive.slice(0, 2).join(", ")}`,
+        )
       : pass("sensitive", "No sensitive paths"),
   );
 
-  // 6. Ahead and behind, read from the refs already on disk. No fetch.
-  let ahead = 0;
-  let behind = 0;
-  const base = destination ? `origin/${destination.ref}` : null;
-  if (destination && (await remoteRefExists(git, destination.ref))) {
-    const counts = await git(["rev-list", "--left-right", "--count", `${base}...HEAD`]);
-    if (counts.code === 0) {
-      const [left, right] = counts.stdout.trim().split(/\s+/);
-      behind = Number.parseInt(left ?? "0", 10) || 0;
-      ahead = Number.parseInt(right ?? "0", 10) || 0;
-    }
+  if (destination && baseExists) {
     if (behind > 0) {
       checks.push(
         warn("base-sync", "Base branch not ahead", `${base} is ${behind} ahead; /ship rebases onto it`),
@@ -585,7 +646,10 @@ async function computeVerdict(cwd: string, force: boolean): Promise<ShipVerdict>
     } else {
       checks.push(pass("base-sync", "Base branch not ahead"));
     }
-    if (destination.kind === "trunk" && ahead > 0) {
+    // Riders only exist when something else is the ship. When the commits are
+    // the ship, /ship pushes them without asking, so there is nothing to warn
+    // about and the detail line already says how many there are.
+    if (destination.kind === "trunk" && ahead > 0 && !committedOnly) {
       checks.push(
         warn(
           "riders",
@@ -598,11 +662,13 @@ async function computeVerdict(cwd: string, force: boolean): Promise<ShipVerdict>
     checks.push(skip("base-sync", "Base branch not ahead", `${base} does not exist yet`));
   }
 
-  // 7. Quality, cached against the exact tree it was run on.
-  const checkFiles = candidatePaths.filter((path) => existsSync(join(repoRoot, path)));
+  // 7. Quality, cached against the exact tree it was run on. A commits-only
+  //    ship is keyed by HEAD, which moves whenever those commits do.
+  const checkFiles = inspectedPaths.filter((path) => existsSync(join(repoRoot, path)));
+  const something = candidatePaths.length > 0 || committedOnly;
   let qualityFromCache = false;
 
-  if (candidatePaths.length > 0 && checks.every((check) => check.status !== "fail")) {
+  if (something && checks.every((check) => check.status !== "fail")) {
     const status = await git(["status", "--porcelain=v1", "-z", "--untracked-files=all"]);
     const key = qualityKey(cwd, head, status.stdout, checkFiles, repoRoot);
     const cached = force ? undefined : readQualityCache(key);
@@ -610,11 +676,19 @@ async function computeVerdict(cwd: string, force: boolean): Promise<ShipVerdict>
       qualityFromCache = true;
       checks.push(...cached);
     } else {
-      const quality = await runQualityChecks(repoRoot, gitDir, checkFiles, heldBack);
+      const quality = await runQualityChecks(
+        repoRoot,
+        gitDir,
+        checkFiles,
+        heldBack,
+        committedOnly
+          ? "already committed, /ship will not rewrite it"
+          : "unstaged edits, /ship will not rewrite it",
+      );
       writeQualityCache(key, quality);
       checks.push(...quality);
     }
-  } else if (candidatePaths.length > 0) {
+  } else if (something) {
     checks.push(skip("quality", "Quality checks", "not run while a blocker is unresolved"));
   }
 
@@ -631,6 +705,7 @@ async function computeVerdict(cwd: string, force: boolean): Promise<ShipVerdict>
     ahead,
     behind,
     changedFiles: candidatePaths.length,
+    unpushedCommits,
     checks,
     qualityFromCache,
     error: null,

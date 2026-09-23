@@ -56,6 +56,7 @@ const SAMPLE_ROW: ShipRow = {
   branch: "main → origin/main · 2 ahead",
   detail: "3 changed files · tracking branch",
   ready: false,
+  commitsOnly: false,
   checkedAt: new Date().toISOString(),
   blockers: [
     { id: "sample-lint", label: "Lint failed", reason: "2 errors in src/ship.ts", status: "fail" },

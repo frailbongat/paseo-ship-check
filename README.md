@@ -4,6 +4,8 @@ A ship-readiness card in the Paseo agent timeline, with the ship itself on it.
 
 When a turn ends, the daemon checks the tree the way the [ship extension](https://github.com/frailbongat/dotfiles/tree/main/pi/agent/extensions/ship) would and appends a card to that agent's timeline: the headline, the branch line, every blocker and warning, and a **Ship** button when the branch is ready. The button appears only for a ready branch and only while the agent is idle. Beside it sits **Ship, keep open**, which ships the same commit and leaves the ticket open.
 
+There is something to ship in either of two cases: work sitting in the tree, or commits on the branch that the destination has not got. The second one is what an agent that commits its own work leaves behind, and the card reads `2 commits to push` for it.
+
 Pressing either one sends the command and puts both down: no spinner, no second press, and no label that changes. The turn it starts is an ordinary turn, and Paseo's stream footer already reports a running turn, so the card would only be saying the same thing twice. The button comes back when that turn ends, or after five seconds if the command never started one. A failed send reports the reason on the card instead of sending anything.
 
 ### Two endings, two buttons
@@ -11,6 +13,8 @@ Pressing either one sends the command and puts both down: no spinner, no second 
 The ship carries one decision the card cannot make for you: whether this commit closes the ticket. `/ship` writes `(closes #42)` on the commit subject and the ticket shuts when the trunk takes it. `/ship refs` writes `(refs #42)` instead, which links the work and leaves the ticket open, for the commit that moves a ticket forward without finishing it.
 
 That is a choice per commit rather than a preference, so it is a second button rather than a setting. **Ship** is filled and **Ship, keep open** is quiet, because closing is the common ending. The quiet one sends the **Ship command** setting with `refs` appended, so a command configured to anything else still gets the same word added. A command that already carries `refs` would make the two buttons send the same text, so the card then shows one.
+
+A card whose ship is commits alone also shows one. `/ship` writes no commit on that run, so neither word has a subject to land on and both buttons would send the same ship.
 
 The card never knows whether the session has an issue in it at all, because that is pi's own state. `refs` with no issue to reference changes nothing, so a repository with no tracker can turn the second button off in settings.
 
@@ -71,6 +75,14 @@ Blockers, in the order `/ship` hits them:
 6. A failing quality check (`prettier --check`, `eslint`, locally installed only, never `npx`)
 
 Shown but not blocking, because `/ship` handles them: a base branch that moved (it rebases), and existing commits riding along to the trunk (it asks first). Formatter style findings are not reported at all, since `/ship` rewrites and restages those files. A formatter that cannot parse a file does block.
+
+### A tree with nothing left in it
+
+A clean tree with unpushed commits on it is a ship, not a quiet turn. The checks then read a different set of files: the paths those commits added or modified, collected per commit rather than from one endpoint diff, so a secret added in the first commit and deleted in the last is still caught on its way to the remote.
+
+Those files are judged read-only, and a formatter finding on one of them blocks. `/ship` cannot fix it the way it fixes a file in the index, because a formatter's edits would land in the working tree rather than in the commits being pushed. Format, commit, and ship again.
+
+The rider warning is gone from that card too. It says `/ship` will ask before landing commits that are not the point of the run, and on this card they are the whole point. `/ship` pushes them without asking, and the detail line already says how many there are.
 
 Undecidable checks, such as a linter running past 30s, count as blockers, never passes. One-tap ship is never offered for a branch `/ship` would refuse.
 

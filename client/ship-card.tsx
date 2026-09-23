@@ -42,6 +42,10 @@
  * second button rather than a setting, and it is quiet rather than filled
  * because closing is the common ending.
  *
+ * A ship of commits alone gets one button. There is no commit left to write, so
+ * there is no subject for either word to land on, and two buttons sending the
+ * same ship under different labels would promise a choice that is not there.
+ *
  * The button draws no progress of its own. The command it sends starts an
  * ordinary turn, and Paseo already reports a running turn in the stream footer,
  * so a second spinner on the card would only be the same news twice. The button
@@ -235,11 +239,14 @@ function ShipActions({
   agentId,
   theme,
   type,
+  keepOpen,
   onError,
 }: {
   agentId: string;
   theme: PluginTheme;
   type: CardType;
+  /** Whether the keep-open ship is offered beside the plain one. */
+  keepOpen: boolean;
   onError: (message: string | null) => void;
 }) {
   const paseo = usePaseo();
@@ -333,7 +340,7 @@ function ShipActions({
         disabled={down}
         onPress={() => ship(command)}
       />
-      {showsKeepOpen(settings) ? (
+      {keepOpen ? (
         <ActionButton
           theme={theme}
           tone="quiet"
@@ -512,12 +519,21 @@ export function ShipCard({ row, agentId, theme, compact, footnote = null }: Ship
     [buttonInHead, compact, padding, stale, theme, type],
   );
 
+  // A commits-only ship has no message to write a `(refs #42)` on, so the
+  // second button would send the first one's ship under another name.
+  const keepOpen = showsKeepOpen(settings) && !row.commitsOnly;
   const shipControl = !action ? null : (
     <View style={controlRowStyle(type, compact)}>
       {stale ? (
-        <RetiredShipButtons theme={theme} type={type} keepOpen={showsKeepOpen(settings)} />
+        <RetiredShipButtons theme={theme} type={type} keepOpen={keepOpen} />
       ) : (
-        <ShipActions agentId={agentId} theme={theme} type={type} onError={setFailure} />
+        <ShipActions
+          agentId={agentId}
+          theme={theme}
+          type={type}
+          keepOpen={keepOpen}
+          onError={setFailure}
+        />
       )}
     </View>
   );

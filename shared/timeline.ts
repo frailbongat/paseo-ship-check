@@ -21,8 +21,10 @@ import {
   type ShipVerdict,
   blockingChecks,
   branchLine,
+  isCommitsOnly,
   isReady,
   passedCount,
+  payloadLine,
   verdictLine,
   warningChecks,
 } from "./ship";
@@ -49,9 +51,16 @@ export const ShipRowSchema = z.object({
   headline: z.string(),
   /** `main → origin/main · 2 ahead`, the same line the panel shows. */
   branch: z.string(),
-  /** Changed-file count plus `/ship`'s reason for the destination. */
+  /** What would be sent, plus `/ship`'s reason for the destination. */
   detail: z.string(),
   ready: z.boolean(),
+  /**
+   * A ship of commits alone, with nothing left in the working tree. The card
+   * drops the keep-open button for it: there is no commit message left to write
+   * a `(refs #42)` on, so both buttons would send the same ship under two
+   * labels. Optional so cards written before this field existed still parse.
+   */
+  commitsOnly: z.boolean().default(false),
   checkedAt: z.string(),
   blockers: z.array(ShipCheckSchema),
   warnings: z.array(ShipCheckSchema),
@@ -69,16 +78,16 @@ export type ShipRow = z.infer<typeof ShipRowSchema>;
 
 /** The row's copy, built once on the daemon so the renderer only draws it. */
 export function toShipRow(verdict: ShipVerdict): ShipRow {
-  const files =
-    verdict.changedFiles === 0
-      ? "Nothing to ship"
-      : `${verdict.changedFiles} changed file${verdict.changedFiles === 1 ? "" : "s"}`;
+  const payload = payloadLine(verdict);
 
   return {
     headline: verdictLine(verdict),
     branch: branchLine(verdict),
-    detail: verdict.destinationReason ? `${files} · ${verdict.destinationReason}` : files,
+    detail: verdict.destinationReason
+      ? `${payload} · ${verdict.destinationReason}`
+      : payload,
     ready: isReady(verdict),
+    commitsOnly: isCommitsOnly(verdict),
     checkedAt: verdict.checkedAt,
     blockers: blockingChecks(verdict),
     warnings: warningChecks(verdict),

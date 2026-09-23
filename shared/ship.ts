@@ -11,7 +11,7 @@ import { defineRpc } from "@getpaseo/plugin";
 import { z } from "zod";
 
 export const SHIP_VERDICT_KIND = "ship-verdict";
-export const SHIP_VERDICT_VERSION = 1;
+export const SHIP_VERDICT_VERSION = 2;
 
 /**
  * `fail` blocks the ship. `warn` is something `/ship` handles by itself, such
@@ -47,8 +47,17 @@ export const ShipVerdictSchema = z.object({
   ahead: z.number(),
   /** Commits on `origin/<base>` that HEAD does not have. */
   behind: z.number(),
-  /** Files `/ship` would stage. Zero means there is nothing to ship. */
+  /** Files `/ship` would stage. Zero on its own no longer means an empty ship. */
   changedFiles: z.number(),
+  /**
+   * Commits `/ship` would push without writing one of its own.
+   *
+   * An agent that commits as it works leaves a clean tree with the ship sitting
+   * in history, which read as `Nothing to ship` while the repository had plenty
+   * to send. Same number as `ahead` whenever the destination exists on origin,
+   * and the commits no origin ref holds when it does not.
+   */
+  unpushedCommits: z.number(),
   checks: z.array(ShipCheckSchema),
   /** True when the quality rows were reused rather than re-run. */
   qualityFromCache: z.boolean(),
@@ -120,14 +129,27 @@ export function isReady(verdict: ShipVerdict): boolean {
   return (
     verdict.isRepo &&
     verdict.error === null &&
-    verdict.changedFiles > 0 &&
+    hasPayload(verdict) &&
     blockingChecks(verdict).length === 0
   );
 }
 
+/**
+ * Whether the repository has anything to send, in either of the two shapes it
+ * arrives in: work in the tree, or commits an agent already wrote.
+ */
+export function hasPayload(verdict: ShipVerdict): boolean {
+  return verdict.changedFiles > 0 || verdict.unpushedCommits > 0;
+}
+
+/** True when the ship is commits alone, with nothing left in the tree. */
+export function isCommitsOnly(verdict: ShipVerdict): boolean {
+  return verdict.changedFiles === 0 && verdict.unpushedCommits > 0;
+}
+
 /** True when there is anything worth putting on screen at all. */
 export function hasVerdict(verdict: ShipVerdict | null): verdict is ShipVerdict {
-  return verdict !== null && verdict.isRepo && verdict.changedFiles > 0;
+  return verdict !== null && verdict.isRepo && hasPayload(verdict);
 }
 
 export function verdictLine(verdict: ShipVerdict): string {
@@ -135,7 +157,24 @@ export function verdictLine(verdict: ShipVerdict): string {
   const count = blockingChecks(verdict).length;
   if (count > 0) return `${count} blocker${count === 1 ? "" : "s"}`;
   if (verdict.error) return verdict.error;
-  return verdict.changedFiles === 0 ? "Nothing to ship" : "Not checked";
+  return hasPayload(verdict) ? "Not checked" : "Nothing to ship";
+}
+
+/**
+ * What would be sent, in the card's own words.
+ *
+ * Files win when there are any, exactly as `/ship` decides it: a tree with work
+ * in it is committed and pushed, and the commits already on the branch ride
+ * along with it rather than being the news.
+ */
+export function payloadLine(verdict: ShipVerdict): string {
+  if (verdict.changedFiles > 0) {
+    return `${verdict.changedFiles} changed file${verdict.changedFiles === 1 ? "" : "s"}`;
+  }
+  if (verdict.unpushedCommits > 0) {
+    return `${verdict.unpushedCommits} commit${verdict.unpushedCommits === 1 ? "" : "s"} to push`;
+  }
+  return "Nothing to ship";
 }
 
 /** `main → origin/main · 2 ahead` for the panel's second line. */
