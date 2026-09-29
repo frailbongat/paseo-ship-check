@@ -2,7 +2,7 @@
 
 A ship-readiness card in the Paseo agent timeline, with the ship itself on it.
 
-When a turn ends, the daemon checks the tree the way the [ship extension](https://github.com/frailbongat/dotfiles/tree/main/pi/agent/extensions/ship) would and appends a card to that agent's timeline: the headline, the branch line, every blocker and warning, and a **Ship** button when the branch is ready. The button appears only for a ready branch and only while the agent is idle. Beside it sits **Ship, keep open**, which ships the same commit and leaves the ticket open.
+When a turn ends, the daemon checks the tree the way the Claude Code [`/ship` skill](https://github.com/frailbongat/skills/tree/main/claude-only/ship) would and appends a card to that agent's timeline: the headline, the branch line, every blocker and warning, and a **Ship** button when the branch is ready. The button appears only for a ready branch and only while the agent is idle. Beside it sits **Ship, keep open**, which ships the same commit and leaves the ticket open.
 
 There is something to ship in either of two cases: work sitting in the tree, or commits on the branch that the destination has not got. The second one is what an agent that commits its own work leaves behind, and the card reads `2 commits to push` for it.
 
@@ -16,7 +16,7 @@ That is a choice per commit rather than a preference, so it is a second button r
 
 A card whose ship is commits alone also shows one. `/ship` writes no commit on that run, so neither word has a subject to land on and both buttons would send the same ship.
 
-The card never knows whether the session has an issue in it at all, because that is pi's own state. `refs` with no issue to reference changes nothing, so a repository with no tracker can turn the second button off in settings.
+The card never knows whether the session has an issue in it at all, because that is the agent's own context. `refs` with no issue to reference changes nothing, so a repository with no tracker can turn the second button off in settings.
 
 The **Ship check** panel draws the same card, so the buttons are in both places and behave the same way. The panel adds **Re-check**, which is the only thing that pays for a fresh run.
 
@@ -35,33 +35,33 @@ paseo plugin install "$PWD"
 paseo plugin ls   # expect: running
 ```
 
-### The ship button needs the ship extension
+### The ship button needs the ship skill
 
-Computing the verdict needs nothing but `git` plus whatever quality tools the repo already declares. **Acting** on it does: the buttons send the literal text `/ship` and `/ship refs`, so the agent must be a pi session with the ship extension installed at `~/.pi/agent/extensions/ship`.
+Computing the verdict needs nothing but `git` plus whatever quality tools the repo already declares. **Acting** on it does: the buttons send the literal text `/ship` and `/ship refs`, so the agent must be a Claude Code session with the ship skill installed at `~/.claude/skills/ship`.
 
 ```bash
-ls ~/.pi/agent/extensions/ship   # if this is empty, one-tap ship does nothing
+ls ~/.claude/skills/ship   # expect SKILL.md and ship.sh, or one-tap ship does nothing
 ```
 
 Without it the card still reads correctly and the panel still reports. Only the one-tap ship goes nowhere: the agent just receives `/ship` as an ordinary message, and since the plugin hides that message (below), it answers a question that is not on screen.
 
 ### The `/ship` message is hidden
 
-Paseo submits a provider slash command as ordinary message text, so the card's **Ship** button and a hand-typed `/ship` both leave a user row reading `/ship`. pi never treats it as conversation: the ship extension registers `ship` as a command, runs it, and the turn carries the ship's own output. A timeline transformer in `client/ship-echo.ts` drops that row, so the timeline shows what ship did instead of the keystroke that started it.
+Paseo submits a provider slash command as ordinary message text, so the card's **Ship** button and a hand-typed `/ship` both leave a user row reading `/ship`. Claude Code never treats it as conversation: `ship` is a skill, Claude Code runs it, and the turn carries the ship's own output. A timeline transformer in `client/ship-echo.ts` drops that row, so the timeline shows what ship did instead of the keystroke that started it.
 
-It matches on the first word, so `/ship main`, `/ship verbose`, and the keep-open button's own `/ship refs` go too, and it follows the **Ship command** setting. A message with a line break is prose and stays. Only the echo is removed: ship's notices and the verdict card still show.
+It matches on the first word, so `/ship main`, `/ship verbose`, and the keep-open button's own `/ship refs` go too, and it follows the **Ship command** setting. A message with a line break is prose and stays. Only the echo is removed: the agent's report and the verdict card still show.
 
-### The result stays pi's notice
+### The result stays the agent's reply
 
-`/ship` ends on a report: `Shipped 1a2b3c4 to origin/main.`, the commit subject, and which checks ran or why they were skipped. The extension prints it through `ctx.ui.notify`, Paseo renders it as a notification row, and this plugin leaves it alone. One ship, one line, written by the thing that did the work.
+`/ship` ends on a report: `Shipped 1a2b3c4 to origin/main.`, the commit subject, and which checks ran or why they were skipped. `ship.sh` prints it, the agent repeats it as its closing reply, and this plugin leaves that reply alone. One ship, one report, written by the thing that did the work.
 
-There was a card for it here, drawn from that report, and it is gone. A notification row is not a row a timeline transformer may select: the app takes `user_message`, `assistant_message`, `reasoning`, `tool_call`, `todo`, `error`, and `compaction`, and rejects the registration with `invalid item type` for anything else. Publishing the card from the daemon instead worked, but nothing removes or rewrites a row the provider wrote, so the report was on the timeline twice. The way round that was to stop the extension printing it and hand the text to the plugin through a file, which put the report's fate in a second program's hands for a line pi already prints correctly.
+There was a card for it here, drawn from that report, and it is gone. Publishing the card from the daemon worked, but nothing removes or rewrites a row the provider wrote, so the report was on the timeline twice.
 
-So the verdict card is the only card. It offers the ship; pi reports what the ship did.
+So the verdict card is the only card. It offers the ship, and the agent reports what the ship did.
 
 ## How the verdict is computed
 
-The verdict mirrors the ship extension step for step, because a card that disagrees with `/ship` is worse than no card. The daemon recomputes it when a turn ends, through an `agent.turn_ended` lifecycle hook, and parks it per agent. That runs with no app connected, so the card and the panel read a finished verdict the moment they are on screen instead of starting a check and spinning. **Re-check ship readiness** in the Command Center (⌘K) and the panel's **Re-check** button force a fresh run.
+The verdict mirrors `ship.sh` step for step, because a card that disagrees with `/ship` is worse than no card. The daemon recomputes it when a turn ends, through an `agent.turn_ended` lifecycle hook, and parks it per agent. That runs with no app connected, so the card and the panel read a finished verdict the moment they are on screen instead of starting a check and spinning. **Re-check ship readiness** in the Command Center (⌘K) and the panel's **Re-check** button force a fresh run.
 
 `/ship-check` in the composer runs the same forced re-check without opening anything, so it can be typed mid-message. The card and the panel move with it.
 
@@ -71,7 +71,7 @@ Blockers, in the order `/ship` hits them:
 2. Unmerged index entries
 3. An unresolvable destination
 4. An `origin` with no push URL
-5. A sensitive path in the change set
+5. A sensitive path in the change set, or added by a commit already on the branch that the destination has not got
 6. A failing quality check (`prettier --check`, `eslint`, locally installed only, never `npx`)
 
 Shown but not blocking, because `/ship` handles them: a base branch that moved (it rebases), and existing commits riding along to the trunk (it asks first). Formatter style findings are not reported at all, since `/ship` rewrites and restages those files. A formatter that cannot parse a file does block.
@@ -102,7 +102,7 @@ A plugin row lives in the daemon's timeline store and nowhere else, so it surviv
 
 Nothing announces the rebuild. `agent.timeline.replacement` is minted by rewind alone, and a resume or a reload says nothing, so `server/timeline-restore.ts` hangs off `agent.session_open` instead and republishes from there. That hook runs *before* the wipe, so it waits: two consecutive timeline fetches that agree on epoch and last sequence mean the rebuild has stopped moving. The verdict is then computed fresh rather than read from the cache, because the tree can have moved while the daemon was not watching and the restored card carries a live ship button. The append is checked four seconds later and repeated once if a late wipe took it.
 
-What the ship itself did is not this plugin's to restore: the report is pi's own notice, and a rebuild re-streams it with the rest of the provider's history.
+What the ship itself did is not this plugin's to restore: the report is the agent's own reply, and a rebuild re-streams it with the rest of the provider's history.
 
 The card lays out for the window it is in. A wide one puts the ship buttons on the headline row; a compact one drops them under the branch and file lines, where they wrap onto a second line rather than squeeze a label. **Ship** takes the card's outer edge in both, which is the right margin when the pair is right-aligned and the left one when it is not. Blockers and warnings sit below a full-bleed rule, the passed count and the check time below a second one.
 

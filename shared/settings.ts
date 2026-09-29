@@ -26,14 +26,14 @@ export const DEFAULT_SHIP_COMMAND = "/ship";
  * `/ship` writes `(closes #42)` on the commit subject and the ticket shuts when
  * the trunk takes it. `/ship refs` writes `(refs #42)` instead, which links the
  * work and leaves the ticket open, for the commit that moves a ticket forward
- * without finishing it. The ship extension parses its arguments in any order,
+ * without finishing it. `ship.sh` parses its arguments in any order,
  * so appending the word is enough however the command is otherwise configured.
  */
 export const KEEP_OPEN_ARGUMENT = "refs";
 
 /**
- * Every spelling the ship extension accepts for that word, mirrored from its
- * own `KEEP_OPEN_WORDS`.
+ * Every spelling `ship.sh` accepts for that word, mirrored from its
+ * parse_prepare_args.
  *
  * It is here so the card can tell whether the configured command already keeps
  * the issue open. A reader who set the command to `/ship refs` wanted that as

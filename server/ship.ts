@@ -1,14 +1,14 @@
 /**
  * Everything the ship card knows, computed on the daemon.
  *
- * This mirrors `~/.pi/agent/extensions/ship` step for step, because a card that
+ * This mirrors `ship.sh` in the Claude Code `/ship` skill step for step, because a card that
  * disagrees with `/ship` is worse than no card. Where the two could drift, this
  * file errs toward reporting a blocker: an undecidable check is a failure, not
  * a silent pass, so the card never offers a one-tap ship that `/ship` refuses.
  *
- * Two deliberate differences from the extension, both to keep it read-only:
+ * Two deliberate differences from `ship.sh`, both to keep it read-only:
  * - It never fetches. `/ship` fetches and rebases onto a trunk that moved; that
- *   is a `warn` row here rather than a blocker, because the extension fixes it.
+ *   is a `warn` row here rather than a blocker, because `/ship` fixes it.
  * - It never writes. `/ship` lets a formatter rewrite and restage a file, so a
  *   style complaint on a rewritable file is not a blocker here either. Only a
  *   formatter that cannot parse the file, or a lint finding, blocks.
@@ -29,8 +29,8 @@ import { SHIP_VERDICT_KIND, SHIP_VERDICT_VERSION } from "../shared/ship";
 
 const GIT_TIMEOUT_MS = 15_000;
 /**
- * `/ship` allows 90s per tool because a human is waiting on a commit. Nothing
- * is waiting on a card, so a tool that runs long is reported as undetermined
+ * `/ship` lets a tool run as long as it takes, because a human is waiting on a
+ * commit. Nothing is waiting on a card, so a tool that runs long is reported as undetermined
  * and `/ship` gets to be the one that waits.
  */
 const CHECK_TIMEOUT_MS = 30_000;
@@ -127,10 +127,10 @@ function skip(id: string, label: string, reason: string): ShipCheck {
 }
 
 // ---------------------------------------------------------------------------
-// Ported from the extension. Kept literal so the two cannot drift apart.
+// Ported from `ship.sh`. Kept literal so the two cannot drift apart.
 // ---------------------------------------------------------------------------
 
-/** `ship/index.ts` GIT_OPERATION_MARKERS. */
+/** `ship.sh` GIT_OPERATION_MARKERS. */
 const GIT_OPERATION_MARKERS = [
   "rebase-merge",
   "rebase-apply",
@@ -140,10 +140,10 @@ const GIT_OPERATION_MARKERS = [
   "BISECT_LOG",
 ];
 
-/** `ship-destination.ts` TRUNK_CANDIDATES. */
+/** `ship.sh` TRUNK_CANDIDATES. */
 const TRUNK_CANDIDATES = ["main", "master", "trunk", "develop"] as const;
 
-/** `ship/index.ts` isExampleSecret + isSensitivePath. */
+/** `ship.sh` is_example_secret + is_sensitive_path. */
 function isExampleSecret(path: string): boolean {
   const lower = path.toLowerCase();
   return /(?:^|[._-])(example|sample|template)(?:[._-]|$)/.test(lower);
@@ -168,7 +168,7 @@ export function isSensitivePath(path: string): boolean {
   return false;
 }
 
-/** `ship/index.ts` PRETTIER_EXTS, ESLINT_EXTS, CHECK_SPECS. */
+/** `ship.sh` CHECK_LABELS and load_spec. */
 const PRETTIER_EXTS = [
   "js", "jsx", "mjs", "cjs", "ts", "tsx", "mts", "cts",
   "json", "jsonc", "css", "scss", "less", "html", "vue",
@@ -197,7 +197,7 @@ const CHECK_SPECS: readonly CheckSpec[] = [
   { label: "rustfmt", tool: "rustfmt", source: "path", exts: ["rs"], args: ["--check"], writeArgs: [] },
 ];
 
-/** `ship-quality.ts` filesForSpec. */
+/** `ship.sh` matches_exts. */
 function filesForSpec(files: readonly string[], spec: CheckSpec): string[] {
   return files.filter((file) => {
     const dot = file.lastIndexOf(".");
@@ -206,7 +206,7 @@ function filesForSpec(files: readonly string[], spec: CheckSpec): string[] {
   });
 }
 
-/** `ship-quality.ts` resolveTool. Never `npx`, never a download. */
+/** `ship.sh` resolve_tool. Never `npx`, never a download. */
 async function resolveTool(spec: CheckSpec, repoRoot: string): Promise<string | undefined> {
   if (spec.source === "local") {
     const binary = join(repoRoot, "node_modules", ".bin", spec.tool);
@@ -216,7 +216,7 @@ async function resolveTool(spec: CheckSpec, repoRoot: string): Promise<string | 
   return found.code === 0 && found.stdout.trim() ? spec.tool : undefined;
 }
 
-/** `ship/index.ts` hasPreCommitHook. */
+/** `ship.sh` has_pre_commit_hook. */
 function hasPreCommitHook(repoRoot: string, gitDir: string | undefined): boolean {
   if (existsSync(join(repoRoot, ".husky", "pre-commit"))) return true;
   if (!gitDir) return false;
@@ -287,14 +287,14 @@ export function clearQualityCache(): void {
 // ---------------------------------------------------------------------------
 
 /**
- * Mirrors `runStagedChecks`, read-only.
+ * Mirrors `ship.sh` run_checks, read-only.
  *
  * `heldBack` is the set `/ship` refuses to rewrite: a file carrying unstaged
  * edits alongside staged ones, or, on a commits-only ship, every file, since a
  * formatter's edits would land in the working tree rather than in the commits
- * being pushed. For those, a formatter complaint is a hard failure in the
- * extension, so it is a blocker here. For everything else the extension
- * rewrites and restages, so only a crash, exit 2 or worse, blocks.
+ * being pushed. For those, a formatter complaint is a hard failure in
+ * `/ship`, so it is a blocker here. For everything else `/ship` rewrites and
+ * restages, so only a crash, exit 2 or worse, blocks.
  *
  * `heldBackHint` says which of the two it was, because the reader's next move
  * differs: stage the rest of the file, or format and commit again.
@@ -333,7 +333,7 @@ async function runQualityChecks(
         ? spec.cacheArgs(join(gitDir, `paseo-ship-${spec.label.replace(/\s+/g, "-")}-cache`))
         : [];
 
-    // The extension rewrites these and restages, so their style findings never
+    // `/ship` rewrites these and restages, so their style findings never
     // stop a ship. Only the files it will not touch are judged.
     const rewritable = spec.writeArgs ? scoped.filter((file) => !heldBack.has(file)) : [];
     const rewritableSet = new Set(rewritable);
@@ -356,7 +356,7 @@ async function runQualityChecks(
     }
 
     if (rewritable.length > 0) {
-      // Read-only stand-in for the extension's `--write` pass: a style diff is
+      // Read-only stand-in for the `--write` pass in `/ship`: a style diff is
       // exit 1 and gets fixed, a parse error is exit 2 and stops the ship.
       const result = await run(binary, [...cached, ...spec.args, ...rewritable], repoRoot, CHECK_TIMEOUT_MS);
       if (result.killed) {
@@ -379,13 +379,15 @@ async function runQualityChecks(
 }
 
 // ---------------------------------------------------------------------------
-// Destination, mirroring ship-destination.ts without a fetch
+// Destination, mirroring `ship.sh` resolve_destination without a fetch
 // ---------------------------------------------------------------------------
 
 interface Destination {
   readonly kind: "trunk" | "branch";
   readonly ref: string;
   readonly reason: string;
+  /** Subtracted along with `ref` when listing what the outgoing commits touch. */
+  readonly trunk: string;
 }
 
 async function remoteRefExists(git: Git, ref: string): Promise<boolean> {
@@ -410,10 +412,18 @@ async function currentBranch(git: Git): Promise<string | undefined> {
   return result.stdout.trim() || undefined;
 }
 
-async function readUpstream(git: Git): Promise<string | undefined> {
+/**
+ * `ship.sh` published_upstream. The origin branch this branch is published to,
+ * named without `origin/`. An upstream of `origin/<trunk>` does not count:
+ * `git switch -c feat origin/main` tracks the trunk without publishing
+ * anything. Any other origin upstream does, whatever its name.
+ */
+async function publishedUpstream(git: Git, trunk: string): Promise<string | undefined> {
   const result = await git(["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"]);
   if (result.code !== 0) return undefined;
-  return result.stdout.trim() || undefined;
+  const upstream = result.stdout.trim();
+  if (!upstream.startsWith("origin/") || upstream === `origin/${trunk}`) return undefined;
+  return upstream.slice("origin/".length) || undefined;
 }
 
 async function resolveDestination(
@@ -424,22 +434,23 @@ async function resolveDestination(
   if (!trunk) return undefined;
 
   if (!branch) {
-    return { kind: "trunk", ref: trunk, reason: "a detached HEAD has no branch to push" };
+    return { kind: "trunk", ref: trunk, trunk, reason: "a detached HEAD has no branch to push" };
   }
   if (branch === trunk) {
-    return { kind: "trunk", ref: trunk, reason: `you are on ${trunk}` };
+    return { kind: "trunk", ref: trunk, trunk, reason: `you are on ${trunk}` };
   }
 
-  const upstream = await readUpstream(git);
+  const upstream = await publishedUpstream(git, trunk);
   if (upstream) {
-    return { kind: "branch", ref: branch, reason: `${branch} tracks ${upstream}` };
+    return { kind: "branch", ref: upstream, trunk, reason: `${branch} tracks origin/${upstream}` };
   }
   if (await remoteRefExists(git, branch)) {
-    return { kind: "branch", ref: branch, reason: `origin/${branch} already exists` };
+    return { kind: "branch", ref: branch, trunk, reason: `origin/${branch} already exists` };
   }
   return {
     kind: "trunk",
     ref: trunk,
+    trunk,
     reason: `${branch} was never pushed, so it is a local worktree branch`,
   };
 }
@@ -449,14 +460,32 @@ async function resolveDestination(
 // ---------------------------------------------------------------------------
 
 /**
- * Every path the unpushed commits added or modified, deduplicated.
+ * Every path the outgoing commits added or modified, deduplicated. Mirrors
+ * `ship.sh` list_outgoing_paths.
  *
  * Read per commit rather than as one endpoint diff, because a secret added in
  * the first commit and deleted in the last is invisible to the endpoints and is
- * still on its way to the remote. Mirrors the extension's `listCommittedPaths`.
+ * still on its way to the remote. Only the trunk and the destination are
+ * subtracted, so a published trunk file merged into a branch is not news.
+ * `--no-renames` reads a `git mv` onto `.env` as an added `.env`, and `-c`
+ * shows a file a merge commit added itself.
  */
-async function listCommittedPaths(git: Git, range: readonly string[]): Promise<string[]> {
-  const result = await git(["log", "--format=", "--name-only", "-z", "--diff-filter=AM", ...range]);
+async function listOutgoingPaths(git: Git, destination: Destination, baseExists: boolean): Promise<string[]> {
+  const not = baseExists
+    ? [`origin/${destination.trunk}`, `origin/${destination.ref}`]
+    : ["--remotes=origin"];
+  const result = await git([
+    "log",
+    "-c",
+    "--format=",
+    "--name-only",
+    "-z",
+    "--no-renames",
+    "--diff-filter=AM",
+    "HEAD",
+    "--not",
+    ...not,
+  ]);
   if (result.code !== 0) return [];
   // `--format=` still separates commits with a newline, so both separators are
   // in play even under `-z`.
@@ -574,11 +603,8 @@ async function computeVerdict(cwd: string, force: boolean): Promise<ShipVerdict>
   let ahead = 0;
   let behind = 0;
   let unpushedCommits = 0;
-  /** The `git log` range those commits came from, reused to list their files. */
-  let unpushedRange: readonly string[] = [];
 
   if (destination && baseExists) {
-    unpushedRange = [`${base}..HEAD`];
     const counts = await git(["rev-list", "--left-right", "--count", `${base}...HEAD`]);
     if (counts.code === 0) {
       const [left, right] = counts.stdout.trim().split(/\s+/);
@@ -589,8 +615,7 @@ async function computeVerdict(cwd: string, force: boolean): Promise<ShipVerdict>
   } else if (destination) {
     // A destination that is not on origin yet has no counterpart to subtract,
     // so the question becomes which commits no origin ref holds at all.
-    unpushedRange = ["HEAD", "--not", "--remotes=origin"];
-    const counts = await git(["rev-list", "--count", ...unpushedRange]);
+    const counts = await git(["rev-list", "--count", "HEAD", "--not", "--remotes=origin"]);
     if (counts.code === 0) unpushedCommits = Number.parseInt(counts.stdout.trim(), 10) || 0;
   }
 
@@ -618,24 +643,31 @@ async function computeVerdict(cwd: string, force: boolean): Promise<ShipVerdict>
   }
 
   const committedOnly = candidatePaths.length === 0 && unpushedCommits > 0;
+  /**
+   * What the commits already on HEAD touch. `/ship` refuses a secret in them
+   * whether they are the payload or riding along with a new commit.
+   */
+  const outgoingPaths =
+    destination && unpushedCommits > 0 ? await listOutgoingPaths(git, destination, baseExists) : [];
   /** The files judged, which on a commits-only ship is not the change set. */
   let inspectedPaths = candidatePaths;
   if (committedOnly) {
-    inspectedPaths = await listCommittedPaths(git, unpushedRange);
+    inspectedPaths = outgoingPaths;
     // Nothing already committed can be rewritten and restaged, so a formatter
-    // finding on any of these is a blocker in the extension too.
+    // finding on any of these is a blocker in `/ship` too.
     heldBack = new Set(inspectedPaths);
   }
 
-  const sensitive = inspectedPaths.filter(isSensitivePath);
+  // `/ship` checks the outgoing commits first, so a secret in both is reported
+  // as a push, the way it refuses it.
+  const sensitivePushed = outgoingPaths.filter(isSensitivePath);
+  const sensitiveCommitted = candidatePaths.filter(isSensitivePath);
   checks.push(
-    sensitive.length > 0
-      ? fail(
-          "sensitive",
-          "No sensitive paths",
-          `refuses to ${committedOnly ? "push" : "commit"} ${sensitive.slice(0, 2).join(", ")}`,
-        )
-      : pass("sensitive", "No sensitive paths"),
+    sensitivePushed.length > 0
+      ? fail("sensitive", "No sensitive paths", `refuses to push ${sensitivePushed.slice(0, 2).join(", ")}`)
+      : sensitiveCommitted.length > 0
+        ? fail("sensitive", "No sensitive paths", `refuses to commit ${sensitiveCommitted.slice(0, 2).join(", ")}`)
+        : pass("sensitive", "No sensitive paths"),
   );
 
   if (destination && baseExists) {

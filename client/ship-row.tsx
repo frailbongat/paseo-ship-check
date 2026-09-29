@@ -2,8 +2,8 @@
  * The timeline renderer for the daemon's ship row.
  *
  * It draws the verdict card and its ship button, and nothing else: the report
- * `/ship` writes when the press lands is pi's own notice, printed on the
- * timeline by the provider, so this card stays a verdict from first append to
+ * `/ship` writes when the press lands is the agent's own closing reply, printed
+ * on the timeline by the provider, so this card stays a verdict from first append to
  * the turn that retires it.
  *
  * Re-checking belongs elsewhere. `/ship-check`, the Command Center item, and
